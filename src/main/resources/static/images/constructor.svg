@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 300 300">
+  <rect width="300" height="300" rx="20" fill="#eef4fb"/>
+  <rect x="95" y="100" width="46" height="46" rx="8" fill="#e74c3c"/>
+  <rect x="145" y="100" width="46" height="46" rx="8" fill="#3498db"/>
+  <rect x="95" y="150" width="46" height="46" rx="8" fill="#f1c40f"/>
+  <rect x="145" y="150" width="46" height="46" rx="8" fill="#2ecc71"/>
+  <rect x="120" y="80" width="56" height="16" rx="4" fill="#8d6e63"/>
+  <text x="150" y="240" text-anchor="middle" font-family="Arial, sans-serif" font-size="19" font-weight="bold" fill="#333">Конструктор</text>
+</svg>

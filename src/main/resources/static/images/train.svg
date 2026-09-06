@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 300 300">
+  <rect width="300" height="300" rx="20" fill="#eef4fb"/>
+  <rect x="70" y="150" width="160" height="10" rx="5" fill="#6d4c41"/>
+  <path d="M120 150 v-12 q0 -14 18 -14 q18 0 18 14 v12 z" fill="#e74c3c"/>
+  <rect x="150" y="108" width="48" height="16" rx="5" fill="#2c3e50"/>
+  <circle cx="128" cy="164" r="10" fill="#f1c40f"/>
+  <circle cx="172" cy="164" r="10" fill="#f1c40f"/>
+  <text x="150" y="245" text-anchor="middle" font-family="Arial, sans-serif" font-size="19" font-weight="bold" fill="#333">Железная дорога</text>
+</svg>
