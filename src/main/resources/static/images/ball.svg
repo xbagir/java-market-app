@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 300 300">
+  <rect width="300" height="300" rx="20" fill="#eef4fb"/>
+  <circle cx="150" cy="140" r="62" fill="#e07b39"/>
+  <path d="M150 78 a62 62 0 0 1 53.7 30 h-107.4 a62 62 0 0 1 53.7 -30" fill="#fff" opacity="0.9"/>
+  <text x="150" y="235" text-anchor="middle" font-family="Arial, sans-serif" font-size="19" font-weight="bold" fill="#333">Мяч футбольный</text>
+</svg>

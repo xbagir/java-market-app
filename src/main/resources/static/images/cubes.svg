@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 300 300">
+  <rect width="300" height="300" rx="20" fill="#eef4fb"/>
+  <rect x="90" y="105" width="40" height="40" rx="6" fill="#e74c3c"/>
+  <rect x="133" y="105" width="40" height="40" rx="6" fill="#3498db"/>
+  <rect x="176" y="105" width="40" height="40" rx="6" fill="#f1c40f"/>
+  <rect x="90" y="148" width="40" height="40" rx="6" fill="#2ecc71"/>
+  <rect x="133" y="148" width="40" height="40" rx="6" fill="#9b59b6"/>
+  <rect x="176" y="148" width="40" height="40" rx="6" fill="#e67e22"/>
+  <text x="150" y="245" text-anchor="middle" font-family="Arial, sans-serif" font-size="19" font-weight="bold" fill="#333">Детские кубики</text>
+</svg>

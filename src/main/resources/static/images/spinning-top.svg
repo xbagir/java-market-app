@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 300 300">
+  <rect width="300" height="300" rx="20" fill="#eef4fb"/>
+  <circle cx="150" cy="150" r="45" fill="none" stroke="#3498db" stroke-width="16"/>
+  <path d="M150 60 q30 60 0 90 q-30 -30 0 -90" fill="#e74c3c"/>
+  <circle cx="150" cy="150" r="14" fill="#2c3e50"/>
+  <path d="M150 60 q30 60 0 90" fill="none" stroke="#e74c3c" stroke-width="0"/>
+  <text x="150" y="245" text-anchor="middle" font-family="Arial, sans-serif" font-size="19" font-weight="bold" fill="#333">Юла «Волчок»</text>
+</svg>

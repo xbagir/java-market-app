@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 300 300">
+  <rect width="300" height="300" rx="20" fill="#eef4fb"/>
+  <circle cx="150" cy="112" r="30" fill="#a1887f"/>
+  <circle cx="138" cy="106" r="4" fill="#333"/>
+  <circle cx="162" cy="106" r="4" fill="#333"/>
+  <ellipse cx="150" cy="118" rx="8" ry="5" fill="#8d6e63"/>
+  <path d="M116 150 q34 -18 68 0 v48 q-34 22 -68 0 z" fill="#a1887f"/>
+  <circle cx="112" cy="132" r="12" fill="#a1887f"/>
+  <circle cx="188" cy="132" r="12" fill="#a1887f"/>
+  <text x="150" y="245" text-anchor="middle" font-family="Arial, sans-serif" font-size="19" font-weight="bold" fill="#333">Плюшевый медведь</text>
+</svg>
