@@ -8,6 +8,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import ru.yandex.practicum.mymarket.dto.Action;
+import ru.yandex.practicum.mymarket.dto.CartView;
 import ru.yandex.practicum.mymarket.exception.NotFoundException;
 import ru.yandex.practicum.mymarket.model.CartItem;
 import ru.yandex.practicum.mymarket.model.Item;
@@ -55,8 +56,8 @@ class CartServiceTest {
     @Test
     void plusCreatesCartItemWhenAbsent() {
         Item item = item(1L, 1490);
-        when(cartItemRepository.findByItemId(1L)).thenReturn(Optional.empty());
         when(itemRepository.findById(1L)).thenReturn(Optional.of(item));
+        when(cartItemRepository.findByItemIdForUpdate(1L)).thenReturn(Optional.empty());
 
         cartService.update(1L, Action.PLUS);
 
@@ -67,7 +68,8 @@ class CartServiceTest {
     void plusIncrementsExistingQuantity() {
         Item item = item(1L, 1490);
         CartItem cartItem = cartItem(1L, item, 1);
-        when(cartItemRepository.findByItemId(1L)).thenReturn(Optional.of(cartItem));
+        when(itemRepository.findById(1L)).thenReturn(Optional.of(item));
+        when(cartItemRepository.findByItemIdForUpdate(1L)).thenReturn(Optional.of(cartItem));
 
         cartService.update(1L, Action.PLUS);
 
@@ -79,7 +81,8 @@ class CartServiceTest {
     void minusDecrementsQuantityAboveOne() {
         Item item = item(1L, 1490);
         CartItem cartItem = cartItem(1L, item, 2);
-        when(cartItemRepository.findByItemId(1L)).thenReturn(Optional.of(cartItem));
+        when(itemRepository.findById(1L)).thenReturn(Optional.of(item));
+        when(cartItemRepository.findByItemIdForUpdate(1L)).thenReturn(Optional.of(cartItem));
 
         cartService.update(1L, Action.MINUS);
 
@@ -91,7 +94,8 @@ class CartServiceTest {
     void minusDeletesWhenQuantityIsOne() {
         Item item = item(1L, 1490);
         CartItem cartItem = cartItem(1L, item, 1);
-        when(cartItemRepository.findByItemId(1L)).thenReturn(Optional.of(cartItem));
+        when(itemRepository.findById(1L)).thenReturn(Optional.of(item));
+        when(cartItemRepository.findByItemIdForUpdate(1L)).thenReturn(Optional.of(cartItem));
 
         cartService.update(1L, Action.MINUS);
 
@@ -102,7 +106,8 @@ class CartServiceTest {
     void deleteRemovesCartItem() {
         Item item = item(1L, 1490);
         CartItem cartItem = cartItem(1L, item, 3);
-        when(cartItemRepository.findByItemId(1L)).thenReturn(Optional.of(cartItem));
+        when(itemRepository.findById(1L)).thenReturn(Optional.of(item));
+        when(cartItemRepository.findByItemIdForUpdate(1L)).thenReturn(Optional.of(cartItem));
 
         cartService.update(1L, Action.DELETE);
 
@@ -111,7 +116,8 @@ class CartServiceTest {
 
     @Test
     void minusOnMissingCartItemIsNoOp() {
-        when(cartItemRepository.findByItemId(1L)).thenReturn(Optional.empty());
+        when(itemRepository.findById(1L)).thenReturn(Optional.of(item(1L, 1490)));
+        when(cartItemRepository.findByItemIdForUpdate(1L)).thenReturn(Optional.empty());
 
         cartService.update(1L, Action.MINUS);
 
@@ -119,22 +125,25 @@ class CartServiceTest {
     }
 
     @Test
-    void plusOnMissingItemThrows() {
-        when(cartItemRepository.findByItemId(1L)).thenReturn(Optional.empty());
-        when(itemRepository.findById(1L)).thenReturn(Optional.empty());
+    void updateThrowsWhenItemMissing() {
+        when(itemRepository.findById(999L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> cartService.update(1L, Action.PLUS))
+        assertThatThrownBy(() -> cartService.update(999L, Action.PLUS))
                 .isInstanceOf(NotFoundException.class);
     }
 
     @Test
-    void totalSumsPriceTimesQuantity() {
+    void getCartViewReturnsItemsAndTotal() {
         Item ball = item(1L, 1490);
         Item doll = item(2L, 1890);
         when(cartItemRepository.findAll()).thenReturn(List.of(
                 cartItem(1L, ball, 2),
                 cartItem(2L, doll, 1)));
 
-        assertThat(cartService.getTotal()).isEqualTo(2L * 1490 + 1890);
+        CartView view = cartService.getCartView();
+
+        assertThat(view.items()).hasSize(2);
+        assertThat(view.items().get(0).count()).isEqualTo(2);
+        assertThat(view.total()).isEqualTo(2L * 1490 + 1890);
     }
 }

@@ -6,7 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import ru.yandex.practicum.mymarket.model.Item;
 
-public interface ItemRepository extends JpaRepository<Item, Long> {
+public interface ItemRepository extends ReadOnlyRepository<Item, Long>, JpaRepository<Item, Long> {
 
     Page<Item> findByTitleContainingIgnoreCaseOrDescriptionContainingIgnoreCase(
             String title, String description, Pageable pageable);

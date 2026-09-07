@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.validation.constraints.NotBlank;
 
 @Entity
 @Table(name = "items")
@@ -15,12 +16,15 @@ public class Item {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @NotBlank
     @Column(nullable = false)
     private String title;
 
+    @NotBlank
     @Column(nullable = false)
     private String description;
 
+    @NotBlank
     @Column(name = "img_path", nullable = false)
     private String imgPath;
 
@@ -45,31 +49,15 @@ public class Item {
         return title;
     }
 
-    public void setTitle(String title) {
-        this.title = title;
-    }
-
     public String getDescription() {
         return description;
-    }
-
-    public void setDescription(String description) {
-        this.description = description;
     }
 
     public String getImgPath() {
         return imgPath;
     }
 
-    public void setImgPath(String imgPath) {
-        this.imgPath = imgPath;
-    }
-
     public long getPrice() {
         return price;
-    }
-
-    public void setPrice(long price) {
-        this.price = price;
     }
 }

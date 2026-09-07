@@ -13,6 +13,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.dto.SortOption;
 import ru.yandex.practicum.mymarket.exception.NotFoundException;
 import ru.yandex.practicum.mymarket.model.Item;
@@ -53,12 +54,13 @@ class ItemServiceTest {
         Page<Item> page = new PageImpl<>(List.of(item(1L, "Мяч", 1490)), pageable, 1);
         when(itemRepository.findAll(any(Pageable.class))).thenReturn(page);
 
-        Page<Item> result = itemService.findPage("", SortOption.NO, 1, 5);
+        Page<ItemDto> result = itemService.findPage("", SortOption.NO, 1, 5);
 
         ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
         verify(itemRepository).findAll(captor.capture());
         assertThat(captor.getValue().getSort()).isEqualTo(Sort.by("id").ascending());
         assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().get(0).id()).isEqualTo(1L);
     }
 
     @Test
@@ -101,11 +103,13 @@ class ItemServiceTest {
     }
 
     @Test
-    void findByIdReturnsItem() {
+    void findByIdReturnsDto() {
         Item item = item(1L, "Мяч", 1490);
         when(itemRepository.findById(1L)).thenReturn(Optional.of(item));
 
-        assertThat(itemService.findById(1L)).isEqualTo(item);
+        ItemDto dto = itemService.findById(1L);
+
+        assertThat(dto).isEqualTo(ItemDto.of(item, 0));
     }
 
     @Test

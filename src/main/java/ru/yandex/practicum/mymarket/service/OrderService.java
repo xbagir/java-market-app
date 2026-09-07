@@ -1,9 +1,12 @@
 package ru.yandex.practicum.mymarket.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import ru.yandex.practicum.mymarket.dto.OrderDto;
+import ru.yandex.practicum.mymarket.exception.EmptyCartException;
 import ru.yandex.practicum.mymarket.exception.NotFoundException;
 import ru.yandex.practicum.mymarket.model.CartItem;
 import ru.yandex.practicum.mymarket.model.Order;
@@ -16,6 +19,8 @@ import java.util.List;
 @Transactional
 public class OrderService {
 
+    private static final Logger log = LoggerFactory.getLogger(OrderService.class);
+
     private final OrderRepository orderRepository;
     private final CartService cartService;
 
@@ -27,7 +32,7 @@ public class OrderService {
     public OrderDto createOrderFromCart() {
         List<CartItem> cartItems = cartService.getCartItems();
         if (cartItems.isEmpty()) {
-            throw new IllegalStateException("Корзина пуста — нечего покупать");
+            throw new EmptyCartException("Корзина пуста — нечего покупать");
         }
         Order order = new Order();
         long totalSum = 0;
@@ -39,6 +44,7 @@ public class OrderService {
         }
         order.setTotalSum(totalSum);
         Order saved = orderRepository.save(order);
+        log.info("Created order {} with total {} and {} items", saved.getId(), totalSum, cartItems.size());
         cartService.clear();
         return OrderDto.of(saved);
     }

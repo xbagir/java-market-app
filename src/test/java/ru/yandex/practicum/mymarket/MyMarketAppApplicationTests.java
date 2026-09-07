@@ -17,6 +17,7 @@ import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrlPattern;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.view;
@@ -76,11 +77,13 @@ class MyMarketAppApplicationTests {
         addToCart(doll);
         addToCart(ball);
 
+        long expectedTotal = 2L * ball.getPrice() + doll.getPrice();
+
         mockMvc.perform(get("/cart/items"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString("Мяч футбольный")))
                 .andExpect(content().string(containsString("Кукла «Алиса»")))
-                .andExpect(content().string(containsString("4870")));
+                .andExpect(content().string(containsString(String.valueOf(expectedTotal))));
 
         mockMvc.perform(post("/buy"))
                 .andExpect(status().is3xxRedirection())
@@ -111,11 +114,11 @@ class MyMarketAppApplicationTests {
 
         mockMvc.perform(get("/cart/items"))
                 .andExpect(status().isOk())
-                .andExpect(content().string(containsString("1490")));
+                .andExpect(content().string(containsString(String.valueOf(ball.getPrice()))));
 
         mockMvc.perform(post("/cart/items").param("id", ball.getId().toString()).param("action", "DELETE"))
-                .andExpect(status().isOk())
-                .andExpect(view().name("cart"));
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/cart/items"));
 
         mockMvc.perform(get("/cart/items"))
                 .andExpect(status().isOk())

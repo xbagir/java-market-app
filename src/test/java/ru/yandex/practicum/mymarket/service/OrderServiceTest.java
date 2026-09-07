@@ -8,6 +8,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import ru.yandex.practicum.mymarket.dto.OrderDto;
+import ru.yandex.practicum.mymarket.exception.EmptyCartException;
 import ru.yandex.practicum.mymarket.exception.NotFoundException;
 import ru.yandex.practicum.mymarket.model.CartItem;
 import ru.yandex.practicum.mymarket.model.Item;
@@ -78,7 +79,7 @@ class OrderServiceTest {
         when(cartService.getCartItems()).thenReturn(List.of());
 
         assertThatThrownBy(() -> orderService.createOrderFromCart())
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(EmptyCartException.class);
     }
 
     @Test
