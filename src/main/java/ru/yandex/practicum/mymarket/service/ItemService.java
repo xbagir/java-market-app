@@ -7,6 +7,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.dto.SortOption;
 import ru.yandex.practicum.mymarket.exception.NotFoundException;
 import ru.yandex.practicum.mymarket.model.Item;
@@ -22,17 +23,21 @@ public class ItemService {
         this.itemRepository = itemRepository;
     }
 
-    public Page<Item> findPage(String search, SortOption sort, int pageNumber, int pageSize) {
+    public Page<ItemDto> findPage(String search, SortOption sort, int pageNumber, int pageSize) {
         Pageable pageable = PageRequest.of(Math.max(pageNumber, 1) - 1, pageSize, sortOf(sort));
+        Page<Item> page;
         if (search == null || search.isBlank()) {
-            return itemRepository.findAll(pageable);
+            page = itemRepository.findAll(pageable);
+        } else {
+            page = itemRepository.findByTitleContainingIgnoreCaseOrDescriptionContainingIgnoreCase(
+                    search, search, pageable);
         }
-        return itemRepository.findByTitleContainingIgnoreCaseOrDescriptionContainingIgnoreCase(
-                search, search, pageable);
+        return page.map(item -> ItemDto.of(item, 0));
     }
 
-    public Item findById(long id) {
+    public ItemDto findById(long id) {
         return itemRepository.findById(id)
+                .map(item -> ItemDto.of(item, 0))
                 .orElseThrow(() -> new NotFoundException("Товар с id " + id + " не найден"));
     }
 

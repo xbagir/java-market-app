@@ -1,14 +1,19 @@
 package ru.yandex.practicum.mymarket.controller;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 
+import ru.yandex.practicum.mymarket.exception.EmptyCartException;
 import ru.yandex.practicum.mymarket.exception.NotFoundException;
 
 @ControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(NotFoundException.class)
     @ResponseStatus(HttpStatus.NOT_FOUND)
@@ -16,9 +21,16 @@ public class GlobalExceptionHandler {
         return "error/404";
     }
 
-    @ExceptionHandler(IllegalStateException.class)
+    @ExceptionHandler(EmptyCartException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public String illegalState(IllegalStateException ex) {
+    public String emptyCart(EmptyCartException ex) {
         return "error/400";
+    }
+
+    @ExceptionHandler(Exception.class)
+    @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+    public String handleException(Exception ex) {
+        log.error("Unhandled exception", ex);
+        return "error/500";
     }
 }

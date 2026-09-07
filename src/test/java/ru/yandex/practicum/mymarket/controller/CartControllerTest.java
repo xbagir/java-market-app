@@ -4,12 +4,11 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 
 import ru.yandex.practicum.mymarket.dto.Action;
-import ru.yandex.practicum.mymarket.model.CartItem;
-import ru.yandex.practicum.mymarket.model.Item;
+import ru.yandex.practicum.mymarket.dto.CartView;
+import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.service.CartService;
 
 import java.util.List;
@@ -19,6 +18,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.model;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.view;
 
@@ -31,23 +31,14 @@ class CartControllerTest {
     @MockitoBean
     private CartService cartService;
 
-    private CartItem cartItem(long id, Item item, int quantity) {
-        CartItem cartItem = new CartItem(item, quantity);
-        ReflectionTestUtils.setField(cartItem, "id", id);
-        return cartItem;
-    }
-
-    private Item item(long id, String title, long price) {
-        Item item = new Item(title, "Описание " + title, "images/ball.svg", price);
-        ReflectionTestUtils.setField(item, "id", id);
-        return item;
+    private ItemDto item(long id, String title, long price, int count) {
+        return new ItemDto(id, title, "Описание " + title, "images/ball.svg", price, count);
     }
 
     @Test
     void cartPageRendersItemsAndTotal() throws Exception {
-        Item ball = item(1L, "Мяч", 1490);
-        when(cartService.getCartItems()).thenReturn(List.of(cartItem(1L, ball, 2)));
-        when(cartService.getTotal()).thenReturn(2980L);
+        when(cartService.getCartView()).thenReturn(new CartView(
+                List.of(item(1L, "Мяч", 1490, 2)), 2L * 1490));
 
         mockMvc.perform(get("/cart/items"))
                 .andExpect(status().isOk())
@@ -57,8 +48,7 @@ class CartControllerTest {
 
     @Test
     void cartAliasPathWorksToo() throws Exception {
-        when(cartService.getCartItems()).thenReturn(List.of());
-        when(cartService.getTotal()).thenReturn(0L);
+        when(cartService.getCartView()).thenReturn(new CartView(List.of(), 0L));
 
         mockMvc.perform(get("/cart"))
                 .andExpect(status().isOk())
@@ -66,14 +56,31 @@ class CartControllerTest {
     }
 
     @Test
-    void postCartItemUpdatesQuantityAndRendersCart() throws Exception {
-        when(cartService.getCartItems()).thenReturn(List.of());
-        when(cartService.getTotal()).thenReturn(0L);
-
+    void postCartItemUpdatesQuantityAndRedirects() throws Exception {
         mockMvc.perform(post("/cart/items").param("id", "1").param("action", "DELETE"))
-                .andExpect(status().isOk())
-                .andExpect(view().name("cart"));
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/cart/items"));
 
         verify(cartService).update(1L, Action.DELETE);
+    }
+
+    @Test
+    void postCatalogItemUpdatesCartAndRedirectsBack() throws Exception {
+        mockMvc.perform(post("/items").param("id", "1").param("action", "PLUS")
+                        .param("search", "").param("sort", "NO")
+                        .param("pageNumber", "1").param("pageSize", "5"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/items?search=&sort=NO&pageNumber=1&pageSize=5"));
+
+        verify(cartService).update(1L, Action.PLUS);
+    }
+
+    @Test
+    void postItemPageActionRedirectsToItem() throws Exception {
+        mockMvc.perform(post("/items/1").param("action", "MINUS"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/items/1"));
+
+        verify(cartService).update(1L, Action.MINUS);
     }
 }

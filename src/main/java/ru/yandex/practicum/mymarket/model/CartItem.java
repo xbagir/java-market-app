@@ -42,10 +42,6 @@ public class CartItem {
         return item;
     }
 
-    public void setItem(Item item) {
-        this.item = item;
-    }
-
     public int getQuantity() {
         return quantity;
     }

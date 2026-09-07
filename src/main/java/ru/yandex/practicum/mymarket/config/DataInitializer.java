@@ -1,4 +1,4 @@
-package ru.yandex.practicum.mymarket.service;
+package ru.yandex.practicum.mymarket.config;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
