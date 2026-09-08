@@ -40,7 +40,7 @@ public class MarketController {
     public String items(@RequestParam(name = "search", defaultValue = "") String search,
                         @RequestParam(name = "sort", defaultValue = "NO") SortOption sort,
                         @RequestParam(name = "pageNumber", defaultValue = "1") @Min(1) int pageNumber,
-                        @RequestParam(name = "pageSize", defaultValue = "5") @Min(2) @Max(50) int pageSize,
+                        @RequestParam(name = "pageSize", defaultValue = "5") @Min(2) @Max(100) int pageSize,
                         Model model) {
         Page<ItemDto> page = itemService.findPage(search, sort, pageNumber, pageSize);
         Map<Long, Integer> quantities = cartService.quantitiesByItemIds(

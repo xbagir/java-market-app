@@ -82,6 +82,23 @@ class MarketControllerTest {
     }
 
     @Test
+    void itemsPageAcceptsMaxPageSize() throws Exception {
+        Page<ItemDto> page = pageOf(List.of(item(1L, "Мяч", 1490)), 0, 100);
+        when(itemService.findPage("", SortOption.NO, 1, 100)).thenReturn(page);
+        when(cartService.quantitiesByItemIds(anyList())).thenReturn(Map.of());
+
+        mockMvc.perform(get("/items").param("pageSize", "100"))
+                .andExpect(status().isOk())
+                .andExpect(view().name("items"));
+    }
+
+    @Test
+    void itemsPageRejectsPageSizeAboveMax() throws Exception {
+        mockMvc.perform(get("/items").param("pageSize", "101"))
+                .andExpect(status().is5xxServerError());
+    }
+
+    @Test
     void itemPageRendersSingleItem() throws Exception {
         ItemDto ball = item(1L, "Мяч", 1490);
         when(itemService.findById(1L)).thenReturn(ball);
