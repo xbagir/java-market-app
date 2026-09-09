@@ -57,7 +57,7 @@ class CartServiceTest {
     void plusCreatesCartItemWhenAbsent() {
         Item item = item(1L, 1490);
         when(itemRepository.findById(1L)).thenReturn(Optional.of(item));
-        when(cartItemRepository.findByItemIdForUpdate(1L)).thenReturn(Optional.empty());
+        when(cartItemRepository.findByItemId(1L)).thenReturn(Optional.empty());
 
         cartService.update(1L, Action.PLUS);
 
@@ -69,7 +69,7 @@ class CartServiceTest {
         Item item = item(1L, 1490);
         CartItem cartItem = cartItem(1L, item, 1);
         when(itemRepository.findById(1L)).thenReturn(Optional.of(item));
-        when(cartItemRepository.findByItemIdForUpdate(1L)).thenReturn(Optional.of(cartItem));
+        when(cartItemRepository.findByItemId(1L)).thenReturn(Optional.of(cartItem));
 
         cartService.update(1L, Action.PLUS);
 
@@ -82,7 +82,7 @@ class CartServiceTest {
         Item item = item(1L, 1490);
         CartItem cartItem = cartItem(1L, item, 2);
         when(itemRepository.findById(1L)).thenReturn(Optional.of(item));
-        when(cartItemRepository.findByItemIdForUpdate(1L)).thenReturn(Optional.of(cartItem));
+        when(cartItemRepository.findByItemId(1L)).thenReturn(Optional.of(cartItem));
 
         cartService.update(1L, Action.MINUS);
 
@@ -95,7 +95,7 @@ class CartServiceTest {
         Item item = item(1L, 1490);
         CartItem cartItem = cartItem(1L, item, 1);
         when(itemRepository.findById(1L)).thenReturn(Optional.of(item));
-        when(cartItemRepository.findByItemIdForUpdate(1L)).thenReturn(Optional.of(cartItem));
+        when(cartItemRepository.findByItemId(1L)).thenReturn(Optional.of(cartItem));
 
         cartService.update(1L, Action.MINUS);
 
@@ -107,7 +107,7 @@ class CartServiceTest {
         Item item = item(1L, 1490);
         CartItem cartItem = cartItem(1L, item, 3);
         when(itemRepository.findById(1L)).thenReturn(Optional.of(item));
-        when(cartItemRepository.findByItemIdForUpdate(1L)).thenReturn(Optional.of(cartItem));
+        when(cartItemRepository.findByItemId(1L)).thenReturn(Optional.of(cartItem));
 
         cartService.update(1L, Action.DELETE);
 
@@ -117,7 +117,7 @@ class CartServiceTest {
     @Test
     void minusOnMissingCartItemIsNoOp() {
         when(itemRepository.findById(1L)).thenReturn(Optional.of(item(1L, 1490)));
-        when(cartItemRepository.findByItemIdForUpdate(1L)).thenReturn(Optional.empty());
+        when(cartItemRepository.findByItemId(1L)).thenReturn(Optional.empty());
 
         cartService.update(1L, Action.MINUS);
 

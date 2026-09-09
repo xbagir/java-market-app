@@ -37,7 +37,7 @@ public class CartService {
     public void update(long itemId, Action action) {
         Item item = itemRepository.findById(itemId)
                 .orElseThrow(() -> new NotFoundException("Товар с id " + itemId + " не найден"));
-        CartItem cartItem = cartItemRepository.findByItemIdForUpdate(itemId).orElse(null);
+        CartItem cartItem = cartItemRepository.findByItemId(itemId).orElse(null);
         switch (action) {
             case PLUS -> {
                 if (cartItem == null) {
