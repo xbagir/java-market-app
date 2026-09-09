@@ -95,7 +95,15 @@ class MarketControllerTest {
     @Test
     void itemsPageRejectsPageSizeAboveMax() throws Exception {
         mockMvc.perform(get("/items").param("pageSize", "101"))
-                .andExpect(status().is5xxServerError());
+                .andExpect(status().isBadRequest())
+                .andExpect(view().name("error/400"));
+    }
+
+    @Test
+    void itemsPageRejectsPageNumberBelowMin() throws Exception {
+        mockMvc.perform(get("/items").param("pageNumber", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(view().name("error/400"));
     }
 
     @Test

@@ -10,6 +10,8 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import ru.yandex.practicum.mymarket.exception.EmptyCartException;
 import ru.yandex.practicum.mymarket.exception.NotFoundException;
 
+import jakarta.validation.ConstraintViolationException;
+
 @ControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -24,6 +26,13 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(EmptyCartException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public String emptyCart(EmptyCartException ex) {
+        return "error/400";
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public String validationError(ConstraintViolationException ex) {
+        log.warn("Request validation failed: {}", ex.getMessage());
         return "error/400";
     }
 
