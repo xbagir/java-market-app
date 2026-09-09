@@ -1,10 +1,17 @@
 # Витрина интернет-магазина (my-market-app)
 
+## О проекте
+
+Веб-приложение — витрина товаров, которые можно положить в корзину и купить.
+Состоит из шести частей: страницы витрины товаров (поиск, сортировка, пагинация),
+страницы товара, корзины покупателя, страницы всех заказов, страницы заказа
+и сервиса покупки (без отдельной веб-страницы, оформляет заказ из корзины).
+
 ## Технологический стек
 
 - Java 21, Spring Boot 3.4, Spring Web MVC (блокирующий стек), Thymeleaf
 - Spring Data JPA, Hibernate ORM
-- База данных: по умолчанию H2 (в памяти), поддерживается PostgreSQL (задаётся через `SPRING_DATASOURCE_*`)
+- База данных: PostgreSQL в Docker Compose; H2 (в памяти) — только для dev-профиля вне Docker (задаётся через `SPRING_DATASOURCE_*`)
 - Сборка: Maven (используется Java 21)
 - Тесты: JUnit 5, Spring Boot Test, MockMvc, `@WebMvcTest`, `@DataJpaTest`, контексты кешируются
 
@@ -34,11 +41,12 @@ docker compose up --build
 src/main/java/ru/yandex/practicum/mymarket/
 ├── MyMarketAppApplication.java   # точка входа
 ├── controller/                   # веб-слой: MarketController, CartController, OrderController
-├── service/                      # бизнес-логика: ItemService, CartService, OrderService, DataInitializer
+├── service/                      # бизнес-логика: ItemService, CartService, OrderService
 ├── repository/                   # Spring Data JPA репозитории
 ├── model/                        # сущности: Item, CartItem, Order, OrderItem
-├── dto/                          # record-модели для шаблонов: ItemDto, OrderDto, Paging, Action, SortOption
-└── exception/                    # NotFoundException
+├── dto/                          # record-модели: ItemDto, OrderDto, CartView, ItemQuantity, Paging, Action, SortOption
+├── exception/                    # NotFoundException (404), EmptyCartException (400)
+└── config/                       # DataInitializer — загрузка демо-товаров в пустую витрину
 
 src/main/resources/
 ├── templates/                    # Thymeleaf-шаблоны (items, item, cart, orders, order, error/*)
@@ -47,17 +55,17 @@ src/main/resources/
 
 ## Эндпоинты
 
-| Метод | Путь | Описание |
-| --- | --- | --- |
-| GET | `/`, `/items` | Витрина (search, sort, pageNumber, pageSize) |
-| GET | `/items/{id}` | Карточка товара |
-| POST | `/items` | Изменить количество в корзине с витрины (`action=PLUS\|MINUS`) |
-| POST | `/items/{id}` | Изменить количество в корзине с карточки товара |
-| GET | `/cart`, `/cart/items` | Корзина |
-| POST | `/cart/items` | Изменить количество / удалить товар (`action=PLUS\|MINUS\|DELETE`) |
-| GET | `/orders` | Список заказов |
-| GET | `/orders/{id}` | Страница заказа (`newOrder=true` — покупка совершена) |
-| POST | `/buy` | Оформить заказ из корзины |
+| Метод | Путь | Параметры | Результат |
+| --- | --- | --- | --- |
+| GET | `/`, `/items` | `search` (поиск по названию/описанию), `sort=NO\|ALPHA\|PRICE`, `pageNumber` (с 1), `pageSize` (2–100) | Шаблон `items`: сетка товаров по 3, `search`, `sort`, `paging` |
+| POST | `/items` | `id`, `action=PLUS\|MINUS`, плюс `search`, `sort`, `pageNumber`, `pageSize` | Редирект `redirect:/items?...` с теми же параметрами |
+| GET | `/items/{id}` | — | Шаблон `item`: товар + количество в корзине |
+| POST | `/items/{id}` | `action=PLUS\|MINUS` | Редирект `redirect:/items/{id}` |
+| GET | `/cart`, `/cart/items` | — | Шаблон `cart`: товары в корзине + `total` |
+| POST | `/cart/items` | `id`, `action=PLUS\|MINUS\|DELETE` | Редирект `redirect:/cart/items` |
+| GET | `/orders` | — | Шаблон `orders`: заказы (новые сверху) |
+| GET | `/orders/{id}` | `newOrder=true`, если переход после покупки | Шаблон `order`: состав, сумма, флаг `newOrder` |
+| POST | `/buy` | — (корзина не должна быть пуста, иначе 400) | Редирект `redirect:/orders/{id}?newOrder=true` |
 
 ## Тесты
 
