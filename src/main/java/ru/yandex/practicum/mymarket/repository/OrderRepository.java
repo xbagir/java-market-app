@@ -7,7 +7,7 @@ import ru.yandex.practicum.mymarket.model.Order;
 
 import java.util.List;
 
-public interface OrderRepository extends ReadOnlyRepository<Order, Long>, JpaRepository<Order, Long> {
+public interface OrderRepository extends JpaRepository<Order, Long> {
 
     @EntityGraph(attributePaths = {"items", "items.item"})
     List<Order> findAllByOrderByIdDesc();

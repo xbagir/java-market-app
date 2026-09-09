@@ -12,7 +12,7 @@ import java.util.Optional;
 
 import jakarta.persistence.LockModeType;
 
-public interface CartItemRepository extends ReadOnlyRepository<CartItem, Long>, JpaRepository<CartItem, Long> {
+public interface CartItemRepository extends JpaRepository<CartItem, Long> {
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT ci FROM CartItem ci WHERE ci.item.id = :itemId")
