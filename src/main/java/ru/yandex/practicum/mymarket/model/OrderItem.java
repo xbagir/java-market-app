@@ -1,42 +1,31 @@
 package ru.yandex.practicum.mymarket.model;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.Table;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.relational.core.mapping.Column;
+import org.springframework.data.relational.core.mapping.Table;
 
-@Entity
-@Table(name = "order_items")
+@Table("order_items")
 public class OrderItem {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "order_id", nullable = false)
-    private Order order;
+    @Column("order_id")
+    private long orderId;
 
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "item_id", nullable = false)
-    private Item item;
+    @Column("item_id")
+    private long itemId;
 
-    @Column(nullable = false)
     private int quantity;
 
-    @Column(nullable = false)
     private long price;
 
     protected OrderItem() {
     }
 
-    public OrderItem(Item item, int quantity, long price) {
-        this.item = item;
+    public OrderItem(long orderId, long itemId, int quantity, long price) {
+        this.orderId = orderId;
+        this.itemId = itemId;
         this.quantity = quantity;
         this.price = price;
     }
@@ -45,16 +34,12 @@ public class OrderItem {
         return id;
     }
 
-    public Order getOrder() {
-        return order;
+    public long getOrderId() {
+        return orderId;
     }
 
-    public void setOrder(Order order) {
-        this.order = order;
-    }
-
-    public Item getItem() {
-        return item;
+    public long getItemId() {
+        return itemId;
     }
 
     public int getQuantity() {
