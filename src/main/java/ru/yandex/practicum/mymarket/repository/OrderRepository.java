@@ -1,14 +1,14 @@
 package ru.yandex.practicum.mymarket.repository;
 
-import org.springframework.data.jpa.repository.EntityGraph;
-import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.r2dbc.repository.Query;
+import org.springframework.data.r2dbc.repository.R2dbcRepository;
 
 import ru.yandex.practicum.mymarket.model.Order;
 
-import java.util.List;
+import reactor.core.publisher.Flux;
 
-public interface OrderRepository extends JpaRepository<Order, Long> {
+public interface OrderRepository extends R2dbcRepository<Order, Long> {
 
-    @EntityGraph(attributePaths = {"items", "items.item"})
-    List<Order> findAllByOrderByIdDesc();
+    @Query("SELECT * FROM shop_orders ORDER BY id DESC")
+    Flux<Order> findAllByOrderByIdDesc();
 }

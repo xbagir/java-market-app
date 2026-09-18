@@ -1,19 +1,12 @@
 package ru.yandex.practicum.mymarket.repository;
 
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.r2dbc.repository.R2dbcRepository;
 
-import ru.yandex.practicum.mymarket.dto.ItemQuantity;
 import ru.yandex.practicum.mymarket.model.CartItem;
 
-import java.util.List;
-import java.util.Optional;
+import reactor.core.publisher.Mono;
 
-public interface CartItemRepository extends JpaRepository<CartItem, Long> {
+public interface CartItemRepository extends R2dbcRepository<CartItem, Long> {
 
-    Optional<CartItem> findByItemId(long itemId);
-
-    @Query("SELECT new ru.yandex.practicum.mymarket.dto.ItemQuantity(ci.item.id, ci.quantity) "
-            + "FROM CartItem ci WHERE ci.item.id IN :itemIds")
-    List<ItemQuantity> findQuantitiesByItemIds(List<Long> itemIds);
+    Mono<CartItem> findByItemId(long itemId);
 }
