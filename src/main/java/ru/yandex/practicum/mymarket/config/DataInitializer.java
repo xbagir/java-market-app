@@ -4,7 +4,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 import ru.yandex.practicum.mymarket.model.Item;
 import ru.yandex.practicum.mymarket.repository.ItemRepository;
@@ -24,10 +23,13 @@ public class DataInitializer implements ApplicationRunner {
     }
 
     @Override
-    @Transactional
     public void run(ApplicationArguments args) {
-        if (seedEnabled && itemRepository.count() == 0) {
-            itemRepository.saveAll(catalog());
+        if (!seedEnabled) {
+            return;
+        }
+        Boolean empty = itemRepository.count().map(count -> count == 0).block();
+        if (Boolean.TRUE.equals(empty)) {
+            itemRepository.saveAll(catalog()).collectList().block();
         }
     }
 
