@@ -14,6 +14,8 @@ import ru.yandex.practicum.mymarket.model.Item;
 import ru.yandex.practicum.mymarket.repository.CartItemRepository;
 import ru.yandex.practicum.mymarket.repository.ItemRepository;
 
+import java.util.Collection;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
@@ -177,7 +179,8 @@ class CartServiceTest {
         when(cartItemRepository.findAll()).thenReturn(Flux.just(
                 cartItem(1L, 1L, 2),
                 cartItem(2L, 2L, 1)));
-        when(itemRepository.findAllById(any())).thenReturn(Flux.just(ball, doll));
+        when(itemRepository.findAllByIdOrdered(org.mockito.Mockito.<Collection<Long>>any()))
+                .thenReturn(Flux.just(ball, doll));
 
         StepVerifier.create(cartService.getCartView())
                 .assertNext(view -> {

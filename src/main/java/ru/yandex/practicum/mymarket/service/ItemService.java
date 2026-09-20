@@ -4,14 +4,15 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.dto.SortOption;
 import ru.yandex.practicum.mymarket.exception.NotFoundException;
+import ru.yandex.practicum.mymarket.model.Item;
 import ru.yandex.practicum.mymarket.repository.ItemRepository;
 
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.util.Locale;
@@ -28,8 +29,15 @@ public class ItemService {
     public Mono<Page<ItemDto>> findPage(String search, SortOption sort, int pageNumber, int pageSize) {
         String query = search == null ? "" : search.trim().toLowerCase(Locale.ROOT);
         String pattern = "%" + query + "%";
-        Pageable pageable = PageRequest.of(Math.max(pageNumber, 1) - 1, pageSize, sortOf(sort));
-        return itemRepository.searchByPattern(pattern, pageable)
+        int page = Math.max(pageNumber, 1) - 1;
+        Pageable pageable = PageRequest.of(page, pageSize);
+        long offset = (long) page * pageSize;
+        Flux<Item> content = switch (sort) {
+            case ALPHA -> itemRepository.searchOrderByTitle(pattern, pageSize, offset);
+            case PRICE -> itemRepository.searchOrderByPrice(pattern, pageSize, offset);
+            case NO -> itemRepository.searchOrderById(pattern, pageSize, offset);
+        };
+        return content
                 .map(item -> ItemDto.of(item, 0))
                 .collectList()
                 .zipWith(itemRepository.countByPattern(pattern))
@@ -40,13 +48,5 @@ public class ItemService {
         return itemRepository.findById(id)
                 .map(item -> ItemDto.of(item, 0))
                 .switchIfEmpty(Mono.error(new NotFoundException("Товар с id " + id + " не найден")));
-    }
-
-    private Sort sortOf(SortOption sort) {
-        return switch (sort) {
-            case ALPHA -> Sort.by("title").ascending();
-            case PRICE -> Sort.by("price").ascending();
-            case NO -> Sort.by("id").ascending();
-        };
     }
 }

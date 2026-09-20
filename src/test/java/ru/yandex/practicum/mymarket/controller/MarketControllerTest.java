@@ -119,6 +119,7 @@ class MarketControllerTest {
     @Test
     void itemPageReturns404WhenMissing() {
         when(itemService.findById(999L)).thenReturn(Mono.error(new NotFoundException("нет")));
+        when(cartService.getQuantityByItemId(999L)).thenReturn(Mono.just(0));
 
         webTestClient.get().uri("/items/999")
                 .exchange()

@@ -69,14 +69,16 @@ class OrderServiceTest {
         when(cartService.getCartItems()).thenReturn(Flux.just(
                 cartItem(1L, 1L, 2),
                 cartItem(2L, 2L, 1)));
-        when(itemRepository.findAllById(any())).thenReturn(Flux.just(ball, doll));
+        when(itemRepository.findAllById(org.mockito.Mockito.<Iterable<Long>>any()))
+                .thenReturn(Flux.just(ball, doll));
         when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> {
             Order saved = invocation.getArgument(0);
             ReflectionTestUtils.setField(saved, "id", 1L);
             return Mono.just(saved);
         });
-        when(orderItemRepository.saveAll(any())).thenAnswer(invocation ->
-                Flux.fromIterable(invocation.getArgument(0)));
+        when(orderItemRepository.saveAll(org.mockito.Mockito.<Iterable<OrderItem>>any()))
+                .thenAnswer(invocation ->
+                        Flux.fromIterable(invocation.getArgument(0)));
         when(cartService.clear()).thenReturn(Mono.empty());
 
         StepVerifier.create(orderService.createOrderFromCart())
@@ -109,7 +111,8 @@ class OrderServiceTest {
         when(orderRepository.findById(1L)).thenReturn(Mono.just(order));
         when(orderItemRepository.findByOrderId(1L))
                 .thenReturn(Flux.just(new OrderItem(1L, 1L, 2, 1490)));
-        when(itemRepository.findAllById(any())).thenReturn(Flux.just(ball));
+        when(itemRepository.findAllById(org.mockito.Mockito.<Iterable<Long>>any()))
+                .thenReturn(Flux.just(ball));
 
         StepVerifier.create(orderService.getOrder(1L))
                 .assertNext(dto -> {
@@ -137,7 +140,8 @@ class OrderServiceTest {
         ReflectionTestUtils.setField(second, "id", 2L);
         when(orderRepository.findAllByOrderByIdDesc()).thenReturn(Flux.just(second, first));
         when(orderItemRepository.findByOrderIdIn(any())).thenReturn(Flux.empty());
-        when(itemRepository.findAllById(any())).thenReturn(Flux.empty());
+        when(itemRepository.findAllById(org.mockito.Mockito.<Iterable<Long>>any()))
+                .thenReturn(Flux.empty());
 
         StepVerifier.create(orderService.getOrders())
                 .assertNext(orders -> assertThat(orders)

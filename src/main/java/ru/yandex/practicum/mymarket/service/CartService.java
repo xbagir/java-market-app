@@ -37,14 +37,15 @@ public class CartService {
         return itemRepository.findById(itemId)
                 .switchIfEmpty(Mono.error(new NotFoundException("Товар с id " + itemId + " не найден")))
                 .flatMap(item -> cartItemRepository.findByItemId(itemId)
-                        .flatMap(cartItem -> applyAction(cartItem, action))
-                        .switchIfEmpty(Mono.defer(() -> {
-                            if (action == Action.PLUS) {
-                                log.debug("Adding item {} to cart", itemId);
-                                return cartItemRepository.save(new CartItem(itemId, 1)).then();
+                        .flatMap(cartItem -> applyAction(cartItem, action).thenReturn(Boolean.TRUE))
+                        .defaultIfEmpty(Boolean.FALSE)
+                        .flatMap(found -> {
+                            if (found || action != Action.PLUS) {
+                                return Mono.empty();
                             }
-                            return Mono.empty();
-                        })));
+                            log.debug("Adding item {} to cart", itemId);
+                            return cartItemRepository.save(new CartItem(itemId, 1)).then();
+                        }));
     }
 
     private Mono<Void> applyAction(CartItem cartItem, Action action) {

@@ -5,17 +5,15 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.dto.SortOption;
 import ru.yandex.practicum.mymarket.exception.NotFoundException;
 import ru.yandex.practicum.mymarket.model.Item;
 import ru.yandex.practicum.mymarket.repository.ItemRepository;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -44,69 +42,55 @@ class ItemServiceTest {
 
     @Test
     void findPageWithoutSearchMatchesAll() {
-        when(itemRepository.searchByPattern(eq("%%"), any(Pageable.class)))
+        when(itemRepository.searchOrderById("%%", 5, 0))
                 .thenReturn(Flux.just(item(1L, "Мяч", 1490)));
         when(itemRepository.countByPattern("%%")).thenReturn(Mono.just(1L));
 
         StepVerifier.create(itemService.findPage("", SortOption.NO, 1, 5))
                 .assertNext(page -> {
-                    org.assertj.core.api.Assertions.assertThat(page.getContent()).hasSize(1);
-                    org.assertj.core.api.Assertions.assertThat(page.getContent().get(0).id()).isEqualTo(1L);
-                    org.assertj.core.api.Assertions.assertThat(page.getTotalElements()).isEqualTo(1L);
+                    assertThat(page.getContent()).hasSize(1);
+                    assertThat(page.getContent().get(0).id()).isEqualTo(1L);
+                    assertThat(page.getTotalElements()).isEqualTo(1L);
                 })
                 .verifyComplete();
 
-        var captor = org.mockito.ArgumentCaptor.forClass(Pageable.class);
-        verify(itemRepository).searchByPattern(eq("%%"), captor.capture());
-        org.assertj.core.api.Assertions.assertThat(captor.getValue().getSort())
-                .isEqualTo(Sort.by("id").ascending());
+        verify(itemRepository).searchOrderById("%%", 5, 0);
     }
 
     @Test
     void findPageWithSearchBuildsLikePattern() {
-        when(itemRepository.searchByPattern(eq("%мяч%"), any(Pageable.class)))
-                .thenReturn(Flux.empty());
+        when(itemRepository.searchOrderByTitle("%мяч%", 5, 0)).thenReturn(Flux.empty());
         when(itemRepository.countByPattern("%мяч%")).thenReturn(Mono.just(0L));
 
         StepVerifier.create(itemService.findPage("мяч", SortOption.ALPHA, 1, 5))
-                .assertNext(page -> org.assertj.core.api.Assertions.assertThat(page.getContent()).isEmpty())
+                .assertNext(page -> assertThat(page.getContent()).isEmpty())
                 .verifyComplete();
 
-        var captor = org.mockito.ArgumentCaptor.forClass(Pageable.class);
-        verify(itemRepository).searchByPattern(eq("%мяч%"), captor.capture());
-        org.assertj.core.api.Assertions.assertThat(captor.getValue().getSort())
-                .isEqualTo(Sort.by("title").ascending());
+        verify(itemRepository).searchOrderByTitle("%мяч%", 5, 0);
     }
 
     @Test
     void priceSortUsesPriceOrdering() {
-        when(itemRepository.searchByPattern(eq("%%"), any(Pageable.class)))
-                .thenReturn(Flux.empty());
+        when(itemRepository.searchOrderByPrice("%%", 5, 0)).thenReturn(Flux.empty());
         when(itemRepository.countByPattern("%%")).thenReturn(Mono.just(0L));
 
         StepVerifier.create(itemService.findPage("", SortOption.PRICE, 1, 5))
                 .expectNextCount(1)
                 .verifyComplete();
 
-        var captor = org.mockito.ArgumentCaptor.forClass(Pageable.class);
-        verify(itemRepository).searchByPattern(eq("%%"), captor.capture());
-        org.assertj.core.api.Assertions.assertThat(captor.getValue().getSort())
-                .isEqualTo(Sort.by("price").ascending());
+        verify(itemRepository).searchOrderByPrice("%%", 5, 0);
     }
 
     @Test
-    void pageNumberIsConvertedFromOneBasedToZeroBased() {
-        when(itemRepository.searchByPattern(eq("%%"), any(Pageable.class)))
-                .thenReturn(Flux.empty());
+    void pageNumberIsConvertedToOffset() {
+        when(itemRepository.searchOrderById("%%", 5, 5)).thenReturn(Flux.empty());
         when(itemRepository.countByPattern("%%")).thenReturn(Mono.just(0L));
 
         StepVerifier.create(itemService.findPage("", SortOption.NO, 2, 5))
                 .expectNextCount(1)
                 .verifyComplete();
 
-        var captor = org.mockito.ArgumentCaptor.forClass(Pageable.class);
-        verify(itemRepository).searchByPattern(eq("%%"), captor.capture());
-        org.assertj.core.api.Assertions.assertThat(captor.getValue().getPageNumber()).isEqualTo(1);
+        verify(itemRepository).searchOrderById("%%", 5, 5);
     }
 
     @Test
@@ -115,8 +99,7 @@ class ItemServiceTest {
         when(itemRepository.findById(1L)).thenReturn(Mono.just(item));
 
         StepVerifier.create(itemService.findById(1L))
-                .assertNext(dto -> org.assertj.core.api.Assertions.assertThat(dto)
-                        .isEqualTo(ru.yandex.practicum.mymarket.dto.ItemDto.of(item, 0)))
+                .assertNext(dto -> assertThat(dto).isEqualTo(ItemDto.of(item, 0)))
                 .verifyComplete();
     }
 

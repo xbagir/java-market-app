@@ -3,8 +3,6 @@ package ru.yandex.practicum.mymarket.repository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.data.r2dbc.DataR2dbcTest;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
 
 import ru.yandex.practicum.mymarket.model.Item;
 
@@ -23,38 +21,40 @@ class ItemRepositoryTest {
 
     @Test
     void searchFindsByTitleIgnoringCase() {
-        Mono<Item> setup = item("Мяч футбольный", "Для игры", 1490)
+        Mono<Item> setup = itemRepository.deleteAll()
+                .then(item("Мяч футбольный", "Для игры", 1490))
                 .then(item("Кукла", "Нарядная", 1890));
 
         StepVerifier.create(setup.thenMany(
-                        itemRepository.searchByPattern("%мяч%", PageRequest.of(0, 10))))
-                .map(Item::getTitle)
-                .expectNext("Мяч футбольный")
+                        itemRepository.searchOrderById("%мяч%", 10, 0)))
+                .expectNextMatches(item -> item.getTitle().equals("Мяч футбольный"))
                 .verifyComplete();
     }
 
     @Test
     void searchFindsByDescription() {
-        Mono<Item> setup = item("Самосвал", "Инерционная машинка с кузовом", 1190)
+        Mono<Item> setup = itemRepository.deleteAll()
+                .then(item("Самосвал", "Инерционная машинка с кузовом", 1190))
                 .then(item("Кубики", "Для малышей", 690));
 
         StepVerifier.create(setup.thenMany(
-                        itemRepository.searchByPattern("%кузовом%", PageRequest.of(0, 10))))
-                .map(Item::getTitle)
-                .expectNext("Самосвал")
+                        itemRepository.searchOrderById("%кузовом%", 10, 0)))
+                .expectNextMatches(item -> item.getTitle().equals("Самосвал"))
                 .verifyComplete();
     }
 
     @Test
     void searchReturnsEmptyWhenNoMatch() {
-        StepVerifier.create(item("Мяч", "Круглый", 1490)
-                        .thenMany(itemRepository.searchByPattern("%несуществующее%", PageRequest.of(0, 10))))
+        StepVerifier.create(itemRepository.deleteAll()
+                        .then(item("Мяч", "Круглый", 1490))
+                        .thenMany(itemRepository.searchOrderById("%несуществующее%", 10, 0)))
                 .verifyComplete();
     }
 
     @Test
     void pagingReturnsRequestedSlice() {
-        Mono<Item> setup = item("Товар 0", "Описание 0", 100)
+        Mono<Item> setup = itemRepository.deleteAll()
+                .then(item("Товар 0", "Описание 0", 100))
                 .then(item("Товар 1", "Описание 1", 101))
                 .then(item("Товар 2", "Описание 2", 102))
                 .then(item("Товар 3", "Описание 3", 103))
@@ -62,7 +62,7 @@ class ItemRepositoryTest {
                 .then(item("Товар 5", "Описание 5", 105));
 
         StepVerifier.create(setup.thenMany(
-                        itemRepository.searchByPattern("%%", PageRequest.of(0, 5, Sort.by("id").ascending()))))
+                        itemRepository.searchOrderById("%%", 5, 0)))
                 .expectNextCount(5)
                 .verifyComplete();
 
@@ -73,13 +73,31 @@ class ItemRepositoryTest {
 
     @Test
     void sortByPriceOrdersAscending() {
-        Mono<Item> setup = item("Кубики", "Дешёвые", 690)
+        Mono<Item> setup = itemRepository.deleteAll()
+                .then(item("Кубики", "Дешёвые", 690))
                 .then(item("Робот", "Дорогой", 3490))
                 .then(item("Мяч", "Средний", 1490));
 
-        StepVerifier.create(setup.thenMany(itemRepository.findAll(Sort.by("price").ascending())))
-                .map(Item::getPrice)
-                .expectNext(690L, 1490L, 3490L)
+        StepVerifier.create(setup.thenMany(
+                        itemRepository.searchOrderByPrice("%%", 10, 0)))
+                .expectNextMatches(item -> item.getPrice() == 690L)
+                .expectNextMatches(item -> item.getPrice() == 1490L)
+                .expectNextMatches(item -> item.getPrice() == 3490L)
+                .verifyComplete();
+    }
+
+    @Test
+    void sortByTitleOrdersAlphabetically() {
+        Mono<Item> setup = itemRepository.deleteAll()
+                .then(item("Кубики", "Для малышей", 690))
+                .then(item("Робот", "Дорогой", 3490))
+                .then(item("Мяч", "Средний", 1490));
+
+        StepVerifier.create(setup.thenMany(
+                        itemRepository.searchOrderByTitle("%%", 10, 0)))
+                .expectNextMatches(item -> item.getTitle().equals("Кубики"))
+                .expectNextMatches(item -> item.getTitle().equals("Мяч"))
+                .expectNextMatches(item -> item.getTitle().equals("Робот"))
                 .verifyComplete();
     }
 }
