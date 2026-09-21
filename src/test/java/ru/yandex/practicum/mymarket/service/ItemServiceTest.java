@@ -3,14 +3,8 @@ package ru.yandex.practicum.mymarket.service;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import ru.yandex.practicum.mymarket.dto.ItemDto;
@@ -19,15 +13,13 @@ import ru.yandex.practicum.mymarket.exception.NotFoundException;
 import ru.yandex.practicum.mymarket.model.Item;
 import ru.yandex.practicum.mymarket.repository.ItemRepository;
 
-import java.util.List;
-import java.util.Optional;
-
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+import reactor.test.StepVerifier;
 
 @ExtendWith(MockitoExtension.class)
 class ItemServiceTest {
@@ -49,74 +41,74 @@ class ItemServiceTest {
     }
 
     @Test
-    void findPageWithoutSearchUsesFindAll() {
-        Pageable pageable = PageRequest.of(0, 5, Sort.by("id").ascending());
-        Page<Item> page = new PageImpl<>(List.of(item(1L, "Мяч", 1490)), pageable, 1);
-        when(itemRepository.findAll(any(Pageable.class))).thenReturn(page);
+    void findPageWithoutSearchMatchesAll() {
+        when(itemRepository.searchOrderById("%%", 5, 0))
+                .thenReturn(Flux.just(item(1L, "Мяч", 1490)));
+        when(itemRepository.countByPattern("%%")).thenReturn(Mono.just(1L));
 
-        Page<ItemDto> result = itemService.findPage("", SortOption.NO, 1, 5);
+        StepVerifier.create(itemService.findPage("", SortOption.NO, 1, 5))
+                .assertNext(page -> {
+                    assertThat(page.getContent()).hasSize(1);
+                    assertThat(page.getContent().get(0).id()).isEqualTo(1L);
+                    assertThat(page.getTotalElements()).isEqualTo(1L);
+                })
+                .verifyComplete();
 
-        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
-        verify(itemRepository).findAll(captor.capture());
-        assertThat(captor.getValue().getSort()).isEqualTo(Sort.by("id").ascending());
-        assertThat(result.getContent()).hasSize(1);
-        assertThat(result.getContent().get(0).id()).isEqualTo(1L);
+        verify(itemRepository).searchOrderById("%%", 5, 0);
     }
 
     @Test
-    void findPageWithSearchUsesDerivedQuery() {
-        Pageable pageable = PageRequest.of(0, 5, Sort.by("title").ascending());
-        when(itemRepository.findByTitleContainingIgnoreCaseOrDescriptionContainingIgnoreCase(
-                any(String.class), any(String.class), any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(), pageable, 0));
+    void findPageWithSearchBuildsLikePattern() {
+        when(itemRepository.searchOrderByTitle("%мяч%", 5, 0)).thenReturn(Flux.empty());
+        when(itemRepository.countByPattern("%мяч%")).thenReturn(Mono.just(0L));
 
-        itemService.findPage("мяч", SortOption.ALPHA, 1, 5);
+        StepVerifier.create(itemService.findPage("мяч", SortOption.ALPHA, 1, 5))
+                .assertNext(page -> assertThat(page.getContent()).isEmpty())
+                .verifyComplete();
 
-        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
-        verify(itemRepository).findByTitleContainingIgnoreCaseOrDescriptionContainingIgnoreCase(
-                eq("мяч"), eq("мяч"), captor.capture());
-        assertThat(captor.getValue().getSort()).isEqualTo(Sort.by("title").ascending());
+        verify(itemRepository).searchOrderByTitle("%мяч%", 5, 0);
     }
 
     @Test
     void priceSortUsesPriceOrdering() {
-        when(itemRepository.findAll(any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, 5), 0));
+        when(itemRepository.searchOrderByPrice("%%", 5, 0)).thenReturn(Flux.empty());
+        when(itemRepository.countByPattern("%%")).thenReturn(Mono.just(0L));
 
-        itemService.findPage("", SortOption.PRICE, 1, 5);
+        StepVerifier.create(itemService.findPage("", SortOption.PRICE, 1, 5))
+                .expectNextCount(1)
+                .verifyComplete();
 
-        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
-        verify(itemRepository).findAll(captor.capture());
-        assertThat(captor.getValue().getSort()).isEqualTo(Sort.by("price").ascending());
+        verify(itemRepository).searchOrderByPrice("%%", 5, 0);
     }
 
     @Test
-    void pageNumberIsConvertedFromOneBasedToZeroBased() {
-        when(itemRepository.findAll(any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(), PageRequest.of(1, 5), 0));
+    void pageNumberIsConvertedToOffset() {
+        when(itemRepository.searchOrderById("%%", 5, 5)).thenReturn(Flux.empty());
+        when(itemRepository.countByPattern("%%")).thenReturn(Mono.just(0L));
 
-        itemService.findPage("", SortOption.NO, 2, 5);
+        StepVerifier.create(itemService.findPage("", SortOption.NO, 2, 5))
+                .expectNextCount(1)
+                .verifyComplete();
 
-        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
-        verify(itemRepository).findAll(captor.capture());
-        assertThat(captor.getValue().getPageNumber()).isEqualTo(1);
+        verify(itemRepository).searchOrderById("%%", 5, 5);
     }
 
     @Test
     void findByIdReturnsDto() {
         Item item = item(1L, "Мяч", 1490);
-        when(itemRepository.findById(1L)).thenReturn(Optional.of(item));
+        when(itemRepository.findById(1L)).thenReturn(Mono.just(item));
 
-        ItemDto dto = itemService.findById(1L);
-
-        assertThat(dto).isEqualTo(ItemDto.of(item, 0));
+        StepVerifier.create(itemService.findById(1L))
+                .assertNext(dto -> assertThat(dto).isEqualTo(ItemDto.of(item, 0)))
+                .verifyComplete();
     }
 
     @Test
     void findByIdThrowsWhenMissing() {
-        when(itemRepository.findById(999L)).thenReturn(Optional.empty());
+        when(itemRepository.findById(999L)).thenReturn(Mono.empty());
 
-        assertThatThrownBy(() -> itemService.findById(999L))
-                .isInstanceOf(NotFoundException.class);
+        StepVerifier.create(itemService.findById(999L))
+                .expectError(NotFoundException.class)
+                .verify();
     }
 }
