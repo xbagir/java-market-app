@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 300 300">
+  <rect width="300" height="300" rx="20" fill="#eef4fb"/>
+  <circle cx="150" cy="120" r="28" fill="#f6c9c9"/>
+  <path d="M122 150 q28 -20 56 0 v45 q-28 18 -56 0 z" fill="#f472b6"/>
+  <circle cx="142" cy="118" r="4" fill="#333"/>
+  <circle cx="158" cy="118" r="4" fill="#333"/>
+  <path d="M144 128 q6 4 12 0" stroke="#333" stroke-width="2" fill="none"/>
+  <text x="150" y="245" text-anchor="middle" font-family="Arial, sans-serif" font-size="19" font-weight="bold" fill="#333">Кукла «Алиса»</text>
+</svg>

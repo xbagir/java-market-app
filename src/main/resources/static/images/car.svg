@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 300 300">
+  <rect width="300" height="300" rx="20" fill="#eef4fb"/>
+  <path d="M100 185 h100 v-50 h-40 v-25 h-60 z" fill="#e74c3c"/>
+  <rect x="100" y="135" width="60" height="18" rx="4" fill="#c0392b"/>
+  <circle cx="118" cy="190" r="10" fill="#2c3e50"/>
+  <circle cx="182" cy="190" r="10" fill="#2c3e50"/>
+  <text x="150" y="245" text-anchor="middle" font-family="Arial, sans-serif" font-size="19" font-weight="bold" fill="#333">Самосвал</text>
+</svg>
