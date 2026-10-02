@@ -12,7 +12,7 @@ tags:
   - name: accounts
     description: Счёт покупателя и запрос баланса
   - name: payments
-    description: Платежи: списание баланса
+    description: "Платежи: списание баланса"
 paths:
   /api/v1/accounts/{accountId}:
     get:

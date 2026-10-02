@@ -40,6 +40,38 @@
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
 			</plugin>
+			<plugin>
+				<groupId>org.openapitools</groupId>
+				<artifactId>openapi-generator-maven-plugin</artifactId>
+				<version>7.23.0</version>
+				<executions>
+					<execution>
+						<id>generate-server</id>
+						<goals>
+							<goal>generate</goal>
+						</goals>
+						<configuration>
+							<inputSpec>${project.basedir}/../specs/payment-api.yaml</inputSpec>
+							<generatorName>spring</generatorName>
+							<apiPackage>ru.yandex.practicum.payment.api</apiPackage>
+							<modelPackage>ru.yandex.practicum.payment.model</modelPackage>
+							<generateApiTests>false</generateApiTests>
+							<generateModelTests>false</generateModelTests>
+							<generateApiDocumentation>false</generateApiDocumentation>
+							<generateModelDocumentation>false</generateModelDocumentation>
+							<configOptions>
+								<reactive>true</reactive>
+								<interfaceOnly>true</interfaceOnly>
+								<useTags>true</useTags>
+								<annotationLibrary>none</annotationLibrary>
+								<documentationProvider>none</documentationProvider>
+								<openApiNullable>false</openApiNullable>
+								<useJakartaEe>true</useJakartaEe>
+							</configOptions>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
 		</plugins>
 	</build>
 </project>
