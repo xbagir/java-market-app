@@ -62,7 +62,7 @@ paths:
         "409":
           description: Недостаточно средств на счёте
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
 components:
@@ -129,6 +129,6 @@ components:
     ProblemResponse:
       description: Ошибка обработки запроса
       content:
-        application/json:
+        application/problem+json:
           schema:
             $ref: "#/components/schemas/Problem"
