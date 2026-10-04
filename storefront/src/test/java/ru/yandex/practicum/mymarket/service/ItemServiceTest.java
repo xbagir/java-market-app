@@ -7,6 +7,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import ru.yandex.practicum.mymarket.cache.ItemCache;
 import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.dto.SortOption;
 import ru.yandex.practicum.mymarket.exception.NotFoundException;
@@ -14,6 +15,9 @@ import ru.yandex.practicum.mymarket.model.Item;
 import ru.yandex.practicum.mymarket.repository.ItemRepository;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -27,11 +31,16 @@ class ItemServiceTest {
     @Mock
     private ItemRepository itemRepository;
 
+    @Mock
+    private ItemCache itemCache;
+
     private ItemService itemService;
 
     @BeforeEach
     void setUp() {
-        itemService = new ItemService(itemRepository);
+        lenient().when(itemCache.get(anyString(), any())).thenReturn(Mono.empty());
+        lenient().when(itemCache.put(anyString(), any())).thenReturn(Mono.empty());
+        itemService = new ItemService(itemRepository, itemCache);
     }
 
     private Item item(long id, String title, long price) {

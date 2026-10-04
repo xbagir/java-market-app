@@ -5,8 +5,12 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWebTestClient;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
 import org.springframework.test.web.reactive.server.WebTestClient;
 
+import ru.yandex.practicum.mymarket.cache.ItemCache;
+import ru.yandex.practicum.mymarket.config.RedisTestConfig;
 import ru.yandex.practicum.mymarket.model.Item;
 import ru.yandex.practicum.mymarket.repository.CartItemRepository;
 import ru.yandex.practicum.mymarket.repository.ItemRepository;
@@ -20,6 +24,7 @@ import static org.hamcrest.Matchers.not;
 
 @SpringBootTest
 @AutoConfigureWebTestClient
+@Import(RedisTestConfig.class)
 class MyMarketAppApplicationTests {
 
     @Autowired
@@ -37,11 +42,18 @@ class MyMarketAppApplicationTests {
     @Autowired
     private OrderItemRepository orderItemRepository;
 
+    @Autowired
+    private ReactiveStringRedisTemplate redisTemplate;
+
     private Item ball;
     private Item doll;
 
     @BeforeEach
     void setUp() {
+        redisTemplate.keys(ItemCache.KEY_PREFIX + "*")
+                .flatMap(redisTemplate::delete)
+                .collectList()
+                .block();
         List<Item> saved = orderItemRepository.deleteAll()
                 .then(cartItemRepository.deleteAll())
                 .then(orderRepository.deleteAll())
