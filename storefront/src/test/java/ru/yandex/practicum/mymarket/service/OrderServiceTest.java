@@ -8,6 +8,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import ru.yandex.practicum.mymarket.exception.EmptyCartException;
+import ru.yandex.practicum.mymarket.exception.InsufficientFundsException;
 import ru.yandex.practicum.mymarket.exception.NotFoundException;
 import ru.yandex.practicum.mymarket.model.CartItem;
 import ru.yandex.practicum.mymarket.model.Item;
@@ -21,6 +22,9 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -43,11 +47,17 @@ class OrderServiceTest {
     @Mock
     private CartService cartService;
 
+    @Mock
+    private PaymentGateway paymentGateway;
+
     private OrderService orderService;
 
     @BeforeEach
     void setUp() {
-        orderService = new OrderService(orderRepository, orderItemRepository, itemRepository, cartService);
+        lenient().when(paymentGateway.getBalance()).thenReturn(Mono.just(Long.MAX_VALUE));
+        lenient().when(paymentGateway.charge(anyLong())).thenReturn(Mono.empty());
+        orderService = new OrderService(orderRepository, orderItemRepository, itemRepository,
+                cartService, paymentGateway);
     }
 
     private Item item(long id, long price) {
@@ -100,6 +110,23 @@ class OrderServiceTest {
         StepVerifier.create(orderService.createOrderFromCart())
                 .expectError(EmptyCartException.class)
                 .verify();
+    }
+
+    @Test
+    void createOrderFailsWhenBalanceTooLow() {
+        Item ball = item(1L, 1490);
+        when(cartService.getCartItems()).thenReturn(Flux.just(cartItem(1L, 1L, 2)));
+        when(itemRepository.findAllById(org.mockito.Mockito.<Iterable<Long>>any()))
+                .thenReturn(Flux.just(ball));
+        when(paymentGateway.getBalance()).thenReturn(Mono.just(1000L));
+
+        StepVerifier.create(orderService.createOrderFromCart())
+                .expectError(InsufficientFundsException.class)
+                .verify();
+
+        verify(paymentGateway, never()).charge(anyLong());
+        verify(orderRepository, never()).save(any(Order.class));
+        verify(cartService, never()).clear();
     }
 
     @Test

@@ -12,6 +12,7 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 
 import ru.yandex.practicum.mymarket.cache.ItemCache;
 import ru.yandex.practicum.mymarket.config.RedisTestConfig;
+import ru.yandex.practicum.mymarket.config.StubPaymentConfig;
 import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.dto.SortOption;
 import ru.yandex.practicum.mymarket.model.Item;
@@ -23,7 +24,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
 @AutoConfigureWebTestClient
-@Import(RedisTestConfig.class)
+@Import({RedisTestConfig.class, StubPaymentConfig.class})
 class ItemCacheTest {
 
     private static final String MARKER = "ИЗ_КЕША";

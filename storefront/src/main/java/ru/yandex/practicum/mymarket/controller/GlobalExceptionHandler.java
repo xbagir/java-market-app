@@ -8,7 +8,9 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 
 import ru.yandex.practicum.mymarket.exception.EmptyCartException;
+import ru.yandex.practicum.mymarket.exception.InsufficientFundsException;
 import ru.yandex.practicum.mymarket.exception.NotFoundException;
+import ru.yandex.practicum.mymarket.exception.PaymentUnavailableException;
 
 import jakarta.validation.ConstraintViolationException;
 
@@ -27,6 +29,20 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public String emptyCart(EmptyCartException ex) {
         return "error/400";
+    }
+
+    @ExceptionHandler(InsufficientFundsException.class)
+    @ResponseStatus(HttpStatus.PAYMENT_REQUIRED)
+    public String insufficientFunds(InsufficientFundsException ex) {
+        log.warn("Payment rejected: {}", ex.getMessage());
+        return "error/402";
+    }
+
+    @ExceptionHandler(PaymentUnavailableException.class)
+    @ResponseStatus(HttpStatus.SERVICE_UNAVAILABLE)
+    public String paymentUnavailable(PaymentUnavailableException ex) {
+        log.error("Payment service unavailable", ex);
+        return "error/503";
     }
 
     @ExceptionHandler(ConstraintViolationException.class)

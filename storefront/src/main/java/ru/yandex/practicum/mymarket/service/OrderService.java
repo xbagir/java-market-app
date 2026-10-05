@@ -7,6 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import ru.yandex.practicum.mymarket.dto.OrderDto;
 import ru.yandex.practicum.mymarket.exception.EmptyCartException;
+import ru.yandex.practicum.mymarket.exception.InsufficientFundsException;
 import ru.yandex.practicum.mymarket.exception.NotFoundException;
 import ru.yandex.practicum.mymarket.model.CartItem;
 import ru.yandex.practicum.mymarket.model.Item;
@@ -30,15 +31,18 @@ public class OrderService {
     private final OrderItemRepository orderItemRepository;
     private final ItemRepository itemRepository;
     private final CartService cartService;
+    private final PaymentGateway paymentGateway;
 
     public OrderService(OrderRepository orderRepository,
                         OrderItemRepository orderItemRepository,
                         ItemRepository itemRepository,
-                        CartService cartService) {
+                        CartService cartService,
+                        PaymentGateway paymentGateway) {
         this.orderRepository = orderRepository;
         this.orderItemRepository = orderItemRepository;
         this.itemRepository = itemRepository;
         this.cartService = cartService;
+        this.paymentGateway = paymentGateway;
     }
 
     @Transactional
@@ -57,23 +61,41 @@ public class OrderService {
                                         .mapToLong(ci -> itemsById.get(ci.getItemId()).getPrice()
                                                 * ci.getQuantity())
                                         .sum();
-                                Order order = new Order();
-                                order.setTotalSum(totalSum);
-                                return orderRepository.save(order)
-                                        .flatMap(saved -> {
-                                            List<OrderItem> orderItems = cartItems.stream()
-                                                    .map(ci -> new OrderItem(saved.getId(), ci.getItemId(),
-                                                            ci.getQuantity(),
-                                                            itemsById.get(ci.getItemId()).getPrice()))
-                                                    .toList();
-                                            return orderItemRepository.saveAll(orderItems)
-                                                    .then(cartService.clear())
-                                                    .thenReturn(OrderDto.of(saved, orderItems, itemsById));
-                                        });
+                                return payForOrder(totalSum)
+                                        .then(Mono.defer(() -> saveOrder(cartItems, itemsById, totalSum)));
                             });
                 })
                 .doOnSuccess(order -> log.info("Created order {} with total {}",
                         order.id(), order.totalSum()));
+    }
+
+    private Mono<Void> payForOrder(long totalSum) {
+        return paymentGateway.getBalance()
+                .flatMap(balance -> {
+                    if (balance < totalSum) {
+                        return Mono.<Void>error(
+                                new InsufficientFundsException(totalSum, balance));
+                    }
+                    return paymentGateway.charge(totalSum);
+                });
+    }
+
+    private Mono<OrderDto> saveOrder(List<CartItem> cartItems,
+                                     Map<Long, Item> itemsById,
+                                     long totalSum) {
+        Order order = new Order();
+        order.setTotalSum(totalSum);
+        return orderRepository.save(order)
+                .flatMap(saved -> {
+                    List<OrderItem> orderItems = cartItems.stream()
+                            .map(ci -> new OrderItem(saved.getId(), ci.getItemId(),
+                                    ci.getQuantity(),
+                                    itemsById.get(ci.getItemId()).getPrice()))
+                            .toList();
+                    return orderItemRepository.saveAll(orderItems)
+                            .then(cartService.clear())
+                            .thenReturn(OrderDto.of(saved, orderItems, itemsById));
+                });
     }
 
     public Mono<OrderDto> getOrder(long id) {

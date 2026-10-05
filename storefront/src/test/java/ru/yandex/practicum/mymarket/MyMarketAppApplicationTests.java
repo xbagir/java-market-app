@@ -11,6 +11,7 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 
 import ru.yandex.practicum.mymarket.cache.ItemCache;
 import ru.yandex.practicum.mymarket.config.RedisTestConfig;
+import ru.yandex.practicum.mymarket.config.StubPaymentConfig;
 import ru.yandex.practicum.mymarket.model.Item;
 import ru.yandex.practicum.mymarket.repository.CartItemRepository;
 import ru.yandex.practicum.mymarket.repository.ItemRepository;
@@ -24,7 +25,7 @@ import static org.hamcrest.Matchers.not;
 
 @SpringBootTest
 @AutoConfigureWebTestClient
-@Import(RedisTestConfig.class)
+@Import({RedisTestConfig.class, StubPaymentConfig.class})
 class MyMarketAppApplicationTests {
 
     @Autowired

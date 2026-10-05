@@ -12,6 +12,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 import ru.yandex.practicum.mymarket.dto.Action;
 import ru.yandex.practicum.mymarket.dto.SortOption;
 import ru.yandex.practicum.mymarket.service.CartService;
+import ru.yandex.practicum.mymarket.service.PaymentGateway;
 
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -23,17 +24,23 @@ import reactor.core.publisher.Mono;
 public class CartController {
 
     private final CartService cartService;
+    private final PaymentGateway paymentGateway;
 
-    public CartController(CartService cartService) {
+    public CartController(CartService cartService, PaymentGateway paymentGateway) {
         this.cartService = cartService;
+        this.paymentGateway = paymentGateway;
     }
 
     @GetMapping({"/cart", "/cart/items"})
     public Mono<String> cart(Model model) {
-        return cartService.getCartView()
-                .doOnNext(cart -> {
-                    model.addAttribute("items", cart.items());
-                    model.addAttribute("total", cart.total());
+        return Mono.zip(cartService.getCartView(),
+                        paymentGateway.getBalance()
+                                .map(balance -> balance + " руб.")
+                                .onErrorReturn("н/д"))
+                .doOnNext(tuple -> {
+                    model.addAttribute("items", tuple.getT1().items());
+                    model.addAttribute("total", tuple.getT1().total());
+                    model.addAttribute("balance", tuple.getT2());
                 })
                 .thenReturn("cart");
     }

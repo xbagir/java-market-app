@@ -1,5 +1,6 @@
 package ru.yandex.practicum.mymarket.controller;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.reactive.WebFluxTest;
@@ -9,7 +10,9 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 import ru.yandex.practicum.mymarket.dto.Action;
 import ru.yandex.practicum.mymarket.dto.CartView;
 import ru.yandex.practicum.mymarket.dto.ItemDto;
+import ru.yandex.practicum.mymarket.exception.PaymentUnavailableException;
 import ru.yandex.practicum.mymarket.service.CartService;
+import ru.yandex.practicum.mymarket.service.PaymentGateway;
 
 import java.util.List;
 
@@ -27,6 +30,14 @@ class CartControllerTest {
 
     @MockitoBean
     private CartService cartService;
+
+    @MockitoBean
+    private PaymentGateway paymentGateway;
+
+    @BeforeEach
+    void stubBalance() {
+        when(paymentGateway.getBalance()).thenReturn(Mono.just(100_000L));
+    }
 
     private ItemDto item(long id, String title, long price, int count) {
         return new ItemDto(id, title, "Описание " + title, "images/ball.svg", price, count);
@@ -49,7 +60,20 @@ class CartControllerTest {
 
         webTestClient.get().uri("/cart")
                 .exchange()
-                .expectStatus().isOk();
+                .expectStatus().isOk()
+                .expectBody(String.class).value(containsString("Баланс: 100000 руб."));
+    }
+
+    @Test
+    void cartPageShowsPaymentServiceDownHint() {
+        when(cartService.getCartView()).thenReturn(Mono.just(new CartView(List.of(), 0L)));
+        when(paymentGateway.getBalance())
+                .thenReturn(Mono.error(new PaymentUnavailableException("down")));
+
+        webTestClient.get().uri("/cart")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(String.class).value(containsString("н/д"));
     }
 
     @Test
