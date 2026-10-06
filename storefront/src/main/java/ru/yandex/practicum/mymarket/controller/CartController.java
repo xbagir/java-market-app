@@ -19,6 +19,8 @@ import jakarta.validation.constraints.Min;
 
 import reactor.core.publisher.Mono;
 
+import java.util.Optional;
+
 @Controller
 @Validated
 public class CartController {
@@ -35,12 +37,15 @@ public class CartController {
     public Mono<String> cart(Model model) {
         return Mono.zip(cartService.getCartView(),
                         paymentGateway.getBalance()
-                                .map(balance -> balance + " руб.")
-                                .onErrorReturn("н/д"))
+                                .map(Optional::of)
+                                .onErrorReturn(Optional.empty()))
                 .doOnNext(tuple -> {
+                    long total = tuple.getT1().total();
+                    Long balance = tuple.getT2().orElse(null);
                     model.addAttribute("items", tuple.getT1().items());
-                    model.addAttribute("total", tuple.getT1().total());
-                    model.addAttribute("balance", tuple.getT2());
+                    model.addAttribute("total", total);
+                    model.addAttribute("balance", balance);
+                    model.addAttribute("balanceEnough", balance != null && balance >= total);
                 })
                 .thenReturn("cart");
     }

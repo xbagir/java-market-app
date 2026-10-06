@@ -17,6 +17,7 @@ import ru.yandex.practicum.mymarket.service.PaymentGateway;
 import java.util.List;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -51,7 +52,9 @@ class CartControllerTest {
         webTestClient.get().uri("/cart/items")
                 .exchange()
                 .expectStatus().isOk()
-                .expectBody(String.class).value(containsString("Мяч"));
+                .expectBody(String.class).value(containsString("Мяч"))
+                .value(not(containsString("disabled=\"disabled\"")))
+                .value(not(containsString("Недостаточно средств")));
     }
 
     @Test
@@ -64,16 +67,33 @@ class CartControllerTest {
                 .expectBody(String.class).value(containsString("Баланс: 100000 руб."));
     }
 
+@Test
+    void cartPageDisablesOrderWhenBalanceTooLow() {
+        when(cartService.getCartView()).thenReturn(Mono.just(new CartView(
+                List.of(item(1L, "Мяч", 1490, 2)), 2L * 1490)));
+        when(paymentGateway.getBalance()).thenReturn(Mono.just(10L));
+
+        webTestClient.get().uri("/cart/items")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(String.class)
+                .value(containsString("Недостаточно средств на балансе"))
+                .value(containsString("disabled=\"disabled\""));
+    }
+
     @Test
-    void cartPageShowsPaymentServiceDownHint() {
-        when(cartService.getCartView()).thenReturn(Mono.just(new CartView(List.of(), 0L)));
+    void cartPageDisablesOrderWhenPaymentServiceUnavailable() {
+        when(cartService.getCartView()).thenReturn(Mono.just(new CartView(
+                List.of(item(1L, "Мяч", 1490, 2)), 2L * 1490)));
         when(paymentGateway.getBalance())
                 .thenReturn(Mono.error(new PaymentUnavailableException("down")));
 
-        webTestClient.get().uri("/cart")
+        webTestClient.get().uri("/cart/items")
                 .exchange()
                 .expectStatus().isOk()
-                .expectBody(String.class).value(containsString("н/д"));
+                .expectBody(String.class)
+                .value(containsString("Сервис платежей недоступен"))
+                .value(containsString("disabled=\"disabled\""));
     }
 
     @Test

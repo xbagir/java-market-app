@@ -16,7 +16,8 @@
                     <h2>
                         <span class="badge text-bg-success">Витрина магазина</span>
                     </h2>
-                    <span class="badge text-bg-info align-self-center" th:text="'Баланс: '+${balance}"></span>
+                    <span class="badge text-bg-info align-self-center"
+                          th:text="${balance != null ? 'Баланс: '+balance+' руб.' : 'Баланс: н/д'}"></span>
                     <a href="/orders" class="btn btn-secondary ms-auto bi bi-file-earmark-text"> Заказы</a>
                     <a href="/items" class="btn btn-secondary bi bi-arrow-left-square"> Главная</a>
                 </div>
@@ -46,11 +47,17 @@
             </div>
         </div>
         <div class="row p-2">
-            <div class="col">
-                <form action="/buy" method="post" th:if="${!items.isEmpty()}">
+            <div class="col" th:if="${!items.isEmpty()}">
+                <div class="alert alert-warning" role="alert" th:if="${balance == null}">
+                    Сервис платежей недоступен. Оформление заказа невозможно.
+                </div>
+                <div class="alert alert-danger" role="alert" th:if="${balance != null and !balanceEnough}">
+                    Недостаточно средств на балансе для оформления заказа.
+                </div>
+                <form action="/buy" method="post">
                     <div class="hstack gap-3">
                         <h2 th:text="'Итого: '+${total}+' руб.'"/>
-                        <button class="btn btn-warning ms-auto">Купить</button>
+                        <button class="btn btn-warning ms-auto" th:disabled="${!balanceEnough}">Купить</button>
                     </div>
                 </form>
             </div>

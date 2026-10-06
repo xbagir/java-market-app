@@ -125,6 +125,32 @@ class PurchasePaymentTest {
                 .expectBody(String.class).value(containsString("Баланс: 100000 руб."));
     }
 
+    @Test
+    void cartPageShowsInsufficientFundsWhenBalanceTooLow() {
+        paymentGateway.setBalance(10);
+        addToCart(ball);
+
+        webTestClient.get().uri("/cart/items")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(String.class)
+                .value(containsString("Недостаточно средств на балансе"))
+                .value(containsString("disabled=\"disabled\""));
+    }
+
+    @Test
+    void cartPageShowsUnavailableWhenPaymentServiceIsDown() {
+        paymentGateway.setServiceDown(true);
+        addToCart(ball);
+
+        webTestClient.get().uri("/cart/items")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(String.class)
+                .value(containsString("Сервис платежей недоступен"))
+                .value(containsString("disabled=\"disabled\""));
+    }
+
     private void addToCart(Item item) {
         webTestClient.post().uri("/items?id=" + item.getId() + "&action=PLUS")
                 .exchange()
