@@ -9,11 +9,11 @@
 
 ## Технологический стек
 
-- Java 21, Spring Boot 3.4, Spring Web MVC (блокирующий стек), Thymeleaf
-- Spring Data JPA, Hibernate ORM
-- База данных: PostgreSQL в Docker Compose; H2 (в памяти) — только для dev-профиля вне Docker (задаётся через `SPRING_DATASOURCE_*`)
+- Java 21, Spring Boot 3.4, Spring WebFlux (реактивный стек, Netty), Thymeleaf
+- Spring Data R2DBC (связи сущностей — вручную через FK-ключи, схема в `schema.sql`)
+- База данных: H2 (в памяти) по умолчанию и для тестов; PostgreSQL в Docker Compose — через `SPRING_R2DBC_*`
 - Сборка: Maven (используется Java 21)
-- Тесты: JUnit 5, Spring Boot Test, MockMvc, `@WebMvcTest`, `@DataJpaTest`, контексты кешируются
+- Тесты: JUnit 5, Spring Boot Test, WebTestClient, `@WebFluxTest`, `@DataR2dbcTest`, StepVerifier, контексты кешируются
 
 ## Запуск (только Docker)
 ```bash
@@ -26,14 +26,15 @@ docker compose up --build
 
 | Свойство | Переменная окружения | По умолчанию | Описание |
 | --- | --- | --- | --- |
-| `spring.datasource.url` | `SPRING_DATASOURCE_URL` | `jdbc:h2:mem:market;DB_CLOSE_DELAY=-1` | JDBC URL |
-| `spring.datasource.username` | `SPRING_DATASOURCE_USERNAME` | `sa` | Пользователь БД |
-| `spring.datasource.password` | `SPRING_DATASOURCE_PASSWORD` | *(пусто)* | Пароль БД |
+| `spring.r2dbc.url` | `SPRING_R2DBC_URL` | `r2dbc:h2:mem:///market` | R2DBC URL |
+| `spring.r2dbc.username` | `SPRING_R2DBC_USERNAME` | `sa` | Пользователь БД |
+| `spring.r2dbc.password` | `SPRING_R2DBC_PASSWORD` | *(пусто)* | Пароль БД |
 | `app.seed.enabled` | `SEED_DATABASE` | `true` | Загружать демо-товары |
 | `server.port` | `APP_PORT` | `8080` | Порт HTTP |
 
-Для PostgreSQL: `SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/market`,
-`SPRING_DATASOURCE_DRIVER=org.postgresql.Driver` и учётные данные БД.
+Для PostgreSQL: `SPRING_R2DBC_URL=r2dbc:postgresql://localhost:5432/market`
+и учётные данные БД (`SPRING_R2DBC_USERNAME`, `SPRING_R2DBC_PASSWORD`).
+H2-консоль недоступна: приложение использует только реактивный драйвер, без JDBC.
 
 ## Структура проекта
 
@@ -42,13 +43,14 @@ src/main/java/ru/yandex/practicum/mymarket/
 ├── MyMarketAppApplication.java   # точка входа
 ├── controller/                   # веб-слой: MarketController, CartController, OrderController
 ├── service/                      # бизнес-логика: ItemService, CartService, OrderService
-├── repository/                   # Spring Data JPA репозитории
-├── model/                        # сущности: Item, CartItem, Order, OrderItem
-├── dto/                          # record-модели: ItemDto, OrderDto, CartView, ItemQuantity, Paging, Action, SortOption
+├── repository/                   # Spring Data R2DBC репозитории (+ OrderItemRepository)
+├── model/                        # сущности без связей: Item, CartItem, Order, OrderItem
+├── dto/                          # record-модели: ItemDto, OrderDto, CartView, Paging, Action, SortOption
 ├── exception/                    # NotFoundException (404), EmptyCartException (400)
 └── config/                       # DataInitializer — загрузка демо-товаров в пустую витрину
 
 src/main/resources/
+├── schema.sql                      # DDL для H2 и PostgreSQL (R2DBC не умеет ddl-auto)
 ├── templates/                    # Thymeleaf-шаблоны (items, item, cart, orders, order, error/*)
 └── static/images/                # изображения товаров (SVG)
 ```
@@ -72,10 +74,10 @@ src/main/resources/
 Тесты запускаются в одноразовом контейнере Maven (без установки на хост):
 
 ```bash
-docker run --rm -v "$PWD":/app -w /app maven:3.9-eclipse-temurin-21 mvn test
+docker run --rm -v "$PWD":/app -w /app -v market-m2:/root/.m2 maven:3.9-eclipse-temurin-21 mvn test
 ```
 
-- `repository/ItemRepositoryTest` — доступ к данным (`@DataJpaTest`)
-- `service/*Test` — юнит-тесты сервисов (Mockito)
-- `controller/*Test` — тесты веб-слоя (`@WebMvcTest` + MockMvc)
-- `MyMarketAppApplicationTests` — интеграционные тесты полного потока покупки (`@SpringBootTest` + `@AutoConfigureMockMvc`)
+- `repository/ItemRepositoryTest` — доступ к данным (`@DataR2dbcTest`, StepVerifier)
+- `service/*Test` — юнит-тесты сервисов (Mockito + StepVerifier)
+- `controller/*Test` — тесты веб-слоя (`@WebFluxTest` + WebTestClient)
+- `MyMarketAppApplicationTests` — интеграционные тесты полного потока покупки (`@SpringBootTest` + WebTestClient)

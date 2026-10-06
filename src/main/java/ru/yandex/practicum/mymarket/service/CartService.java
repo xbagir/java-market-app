@@ -8,20 +8,18 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.yandex.practicum.mymarket.dto.Action;
 import ru.yandex.practicum.mymarket.dto.CartView;
 import ru.yandex.practicum.mymarket.dto.ItemDto;
-import ru.yandex.practicum.mymarket.dto.ItemQuantity;
 import ru.yandex.practicum.mymarket.exception.NotFoundException;
 import ru.yandex.practicum.mymarket.model.CartItem;
-import ru.yandex.practicum.mymarket.model.Item;
 import ru.yandex.practicum.mymarket.repository.CartItemRepository;
 import ru.yandex.practicum.mymarket.repository.ItemRepository;
 
-import java.util.Collections;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 @Service
-@Transactional
 public class CartService {
 
     private static final Logger log = LoggerFactory.getLogger(CartService.class);
@@ -34,75 +32,86 @@ public class CartService {
         this.itemRepository = itemRepository;
     }
 
-    public void update(long itemId, Action action) {
-        Item item = itemRepository.findById(itemId)
-                .orElseThrow(() -> new NotFoundException("Товар с id " + itemId + " не найден"));
-        CartItem cartItem = cartItemRepository.findByItemId(itemId).orElse(null);
-        switch (action) {
-            case PLUS -> {
-                if (cartItem == null) {
-                    log.debug("Adding item {} to cart", itemId);
-                    cartItemRepository.save(new CartItem(item, 1));
-                } else {
-                    log.debug("Incrementing item {} in cart", itemId);
-                    cartItem.setQuantity(cartItem.getQuantity() + 1);
-                }
-            }
-            case MINUS -> {
-                if (cartItem != null) {
-                    if (cartItem.getQuantity() > 1) {
-                        log.debug("Decrementing item {} in cart", itemId);
-                        cartItem.setQuantity(cartItem.getQuantity() - 1);
-                    } else {
-                        log.debug("Removing item {} from cart (quantity was 1)", itemId);
-                        cartItemRepository.delete(cartItem);
-                    }
-                }
-            }
-            case DELETE -> {
-                if (cartItem != null) {
-                    log.debug("Deleting item {} from cart", itemId);
-                    cartItemRepository.delete(cartItem);
-                }
-            }
-        }
+    @Transactional
+    public Mono<Void> update(long itemId, Action action) {
+        return itemRepository.findById(itemId)
+                .switchIfEmpty(Mono.error(new NotFoundException("Товар с id " + itemId + " не найден")))
+                .flatMap(item -> cartItemRepository.findByItemId(itemId)
+                        .flatMap(cartItem -> applyAction(cartItem, action).thenReturn(Boolean.TRUE))
+                        .defaultIfEmpty(Boolean.FALSE)
+                        .flatMap(found -> {
+                            if (found || action != Action.PLUS) {
+                                return Mono.empty();
+                            }
+                            log.debug("Adding item {} to cart", itemId);
+                            return cartItemRepository.save(new CartItem(itemId, 1)).then();
+                        }));
     }
 
-    @Transactional(readOnly = true)
-    public List<CartItem> getCartItems() {
+    private Mono<Void> applyAction(CartItem cartItem, Action action) {
+        long itemId = cartItem.getItemId();
+        return switch (action) {
+            case PLUS -> {
+                log.debug("Incrementing item {} in cart", itemId);
+                cartItem.setQuantity(cartItem.getQuantity() + 1);
+                yield cartItemRepository.save(cartItem).then();
+            }
+            case MINUS -> {
+                if (cartItem.getQuantity() > 1) {
+                    log.debug("Decrementing item {} in cart", itemId);
+                    cartItem.setQuantity(cartItem.getQuantity() - 1);
+                    yield cartItemRepository.save(cartItem).then();
+                }
+                log.debug("Removing item {} from cart (quantity was 1)", itemId);
+                yield cartItemRepository.delete(cartItem);
+            }
+            case DELETE -> {
+                log.debug("Deleting item {} from cart", itemId);
+                yield cartItemRepository.delete(cartItem);
+            }
+        };
+    }
+
+    public Flux<CartItem> getCartItems() {
         return cartItemRepository.findAll();
     }
 
-    @Transactional(readOnly = true)
-    public CartView getCartView() {
-        List<CartItem> rows = cartItemRepository.findAll();
-        List<ItemDto> items = rows.stream()
-                .map(ci -> ItemDto.of(ci.getItem(), ci.getQuantity()))
-                .toList();
-        long total = rows.stream()
-                .mapToLong(ci -> ci.getItem().getPrice() * ci.getQuantity())
-                .sum();
-        return new CartView(items, total);
+    public Mono<CartView> getCartView() {
+        return cartItemRepository.findAll()
+                .collectMap(CartItem::getItemId, CartItem::getQuantity)
+                .flatMap(quantities -> {
+                    if (quantities.isEmpty()) {
+                        return Mono.just(new CartView(List.of(), 0));
+                    }
+                    return itemRepository.findAllByIdOrdered(quantities.keySet())
+                            .collectList()
+                            .map(items -> {
+                                List<ItemDto> dtos = items.stream()
+                                        .map(item -> ItemDto.of(item,
+                                                quantities.getOrDefault(item.getId(), 0)))
+                                        .toList();
+                                long total = items.stream()
+                                        .mapToLong(item -> item.getPrice()
+                                                * quantities.getOrDefault(item.getId(), 0))
+                                        .sum();
+                                return new CartView(dtos, total);
+                            });
+                });
     }
 
-    @Transactional(readOnly = true)
-    public Map<Long, Integer> quantitiesByItemIds(List<Long> itemIds) {
-        if (itemIds.isEmpty()) {
-            return Collections.emptyMap();
-        }
-        return cartItemRepository.findQuantitiesByItemIds(itemIds).stream()
-                .collect(Collectors.toMap(ItemQuantity::itemId, ItemQuantity::quantity, Integer::sum));
+    public Mono<Map<Long, Integer>> quantitiesByItemIds() {
+        return cartItemRepository.findAll()
+                .collectMap(CartItem::getItemId, CartItem::getQuantity);
     }
 
-    @Transactional(readOnly = true)
-    public int getQuantityByItemId(long itemId) {
+    public Mono<Integer> getQuantityByItemId(long itemId) {
         return cartItemRepository.findByItemId(itemId)
                 .map(CartItem::getQuantity)
-                .orElse(0);
+                .defaultIfEmpty(0);
     }
 
-    public void clear() {
+    public Mono<Void> clear() {
         log.info("Clearing cart");
-        cartItemRepository.deleteAll();
+        return cartItemRepository.deleteAll();
     }
 }

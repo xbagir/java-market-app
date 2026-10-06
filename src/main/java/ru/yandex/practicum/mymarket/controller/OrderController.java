@@ -7,8 +7,9 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
-import ru.yandex.practicum.mymarket.dto.OrderDto;
 import ru.yandex.practicum.mymarket.service.OrderService;
+
+import reactor.core.publisher.Mono;
 
 @Controller
 public class OrderController {
@@ -20,23 +21,27 @@ public class OrderController {
     }
 
     @GetMapping("/orders")
-    public String orders(Model model) {
-        model.addAttribute("orders", orderService.getOrders());
-        return "orders";
+    public Mono<String> orders(Model model) {
+        return orderService.getOrders()
+                .doOnNext(orders -> model.addAttribute("orders", orders))
+                .thenReturn("orders");
     }
 
     @GetMapping("/orders/{id}")
-    public String order(@PathVariable long id,
-                        @RequestParam(name = "newOrder", defaultValue = "false") boolean newOrder,
-                        Model model) {
-        model.addAttribute("order", orderService.getOrder(id));
-        model.addAttribute("newOrder", newOrder);
-        return "order";
+    public Mono<String> order(@PathVariable long id,
+                              @RequestParam(name = "newOrder", defaultValue = "false") boolean newOrder,
+                              Model model) {
+        return orderService.getOrder(id)
+                .doOnNext(order -> {
+                    model.addAttribute("order", order);
+                    model.addAttribute("newOrder", newOrder);
+                })
+                .thenReturn("order");
     }
 
     @PostMapping("/buy")
-    public String buy() {
-        OrderDto order = orderService.createOrderFromCart();
-        return "redirect:/orders/" + order.id() + "?newOrder=true";
+    public Mono<String> buy() {
+        return orderService.createOrderFromCart()
+                .map(order -> "redirect:/orders/" + order.id() + "?newOrder=true");
     }
 }

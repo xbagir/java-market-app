@@ -1,6 +1,5 @@
 package ru.yandex.practicum.mymarket.controller;
 
-import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.validation.annotation.Validated;
@@ -16,10 +15,10 @@ import ru.yandex.practicum.mymarket.service.ItemService;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import reactor.core.publisher.Mono;
 
 @Controller
 @Validated
@@ -37,31 +36,35 @@ public class MarketController {
     }
 
     @GetMapping({"/", "/items"})
-    public String items(@RequestParam(name = "search", defaultValue = "") String search,
-                        @RequestParam(name = "sort", defaultValue = "NO") SortOption sort,
-                        @RequestParam(name = "pageNumber", defaultValue = "1") @Min(1) int pageNumber,
-                        @RequestParam(name = "pageSize", defaultValue = "5") @Min(2) @Max(100) int pageSize,
-                        Model model) {
-        Page<ItemDto> page = itemService.findPage(search, sort, pageNumber, pageSize);
-        Map<Long, Integer> quantities = cartService.quantitiesByItemIds(
-                page.getContent().stream().map(ItemDto::id).toList());
-        List<ItemDto> items = page.getContent().stream()
-                .map(dto -> dto.withCount(quantities.getOrDefault(dto.id(), 0)))
-                .toList();
-        model.addAttribute("items", toGrid(items));
-        model.addAttribute("search", search);
-        model.addAttribute("sort", sort.name());
-        model.addAttribute("paging", new Paging(pageSize, page.getNumber() + 1,
-                page.hasPrevious(), page.hasNext()));
-        return "items";
+    public Mono<String> items(@RequestParam(name = "search", defaultValue = "") String search,
+                              @RequestParam(name = "sort", defaultValue = "NO") SortOption sort,
+                              @RequestParam(name = "pageNumber", defaultValue = "1") @Min(1) int pageNumber,
+                              @RequestParam(name = "pageSize", defaultValue = "5") @Min(2) @Max(100) int pageSize,
+                              Model model) {
+        return itemService.findPage(search, sort, pageNumber, pageSize)
+                .zipWith(cartService.quantitiesByItemIds())
+                .doOnNext(tuple -> {
+                    var page = tuple.getT1();
+                    var quantities = tuple.getT2();
+                    List<ItemDto> items = page.getContent().stream()
+                            .map(dto -> dto.withCount(quantities.getOrDefault(dto.id(), 0)))
+                            .toList();
+                    model.addAttribute("items", toGrid(items));
+                    model.addAttribute("search", search);
+                    model.addAttribute("sort", sort.name());
+                    model.addAttribute("paging", new Paging(pageSize, page.getNumber() + 1,
+                            page.hasPrevious(), page.hasNext()));
+                })
+                .thenReturn("items");
     }
 
     @GetMapping("/items/{id}")
-    public String item(@PathVariable long id, Model model) {
-        ItemDto item = itemService.findById(id)
-                .withCount(cartService.getQuantityByItemId(id));
-        model.addAttribute("item", item);
-        return "item";
+    public Mono<String> item(@PathVariable long id, Model model) {
+        return itemService.findById(id)
+                .zipWith(cartService.getQuantityByItemId(id))
+                .doOnNext(tuple -> model.addAttribute("item",
+                        tuple.getT1().withCount(tuple.getT2())))
+                .thenReturn("item");
     }
 
     private List<List<ItemDto>> toGrid(List<ItemDto> items) {
