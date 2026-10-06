@@ -4,6 +4,7 @@ WORKDIR /app
 COPY pom.xml .
 COPY storefront/pom.xml storefront/pom.xml
 COPY payment-service/pom.xml payment-service/pom.xml
+COPY specs ./specs
 RUN mvn -B -pl storefront -am dependency:go-offline || for i in 1 2 3 4 5; do sleep 5; mvn -B -pl storefront -am dependency:go-offline && break; done
 
 COPY storefront/src ./storefront/src
