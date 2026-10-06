@@ -21,9 +21,27 @@
 - Тесты: JUnit 5, Spring Boot Test, WebTestClient, `@WebFluxTest`, `@DataR2dbcTest`,
   Testcontainers (Redis), StepVerifier; кеширование контекстов
 
+## Сборка мультипроекта
+
+Из корня репозитория (нужна Java 21 и Maven 3.9+):
+
+```bash
+mvn clean package
+```
+
+Сборка обоих подпроектов в одноразовом контейнере Maven (без установки Maven на хост):
+
+```bash
+docker run --rm -v "$PWD":/app -w /app -v market-m2:/root/.m2 \
+  maven:3.9-eclipse-temurin-21 mvn -B clean package
+```
+
+Результат — два Executable JAR: `storefront/target/storefront-0.0.1-SNAPSHOT.jar`
+и `payment-service/target/payment-service-0.0.1-SNAPSHOT.jar`.
+
 ## Запуск (только Docker)
 
-`docker-compose.yml` поднимает три сервиса: PostgreSQL, Redis, витрину и сервис платежей.
+`docker-compose.yml` поднимает четыре сервиса: PostgreSQL, Redis, витрину и сервис платежей.
 
 ```bash
 docker compose up --build
@@ -38,10 +56,23 @@ docker compose up --build
 ## Локальный запуск (без Docker Compose)
 
 1. Поднимите локальный Redis (кеш каталога): `docker run -p 6379:6379 redis:7-alpine`
-2. Сервис платежей: `docker run --rm -p 8081:8081 ... image market-payments` —
-   или из IDE: `payment-service` (контекст платежей, порт `SERVER_PORT=8081`)
-3. Витрина: из IDE `MyMarketAppApplication` — H2 в памяти по умолчанию,
+2. Сервис платежей — из собранного JAR:
+   `java -jar payment-service/target/payment-service-0.0.1-SNAPSHOT.jar`
+   (или запуском класса `PaymentServiceApplication` из IDE; порт `SERVER_PORT`, по умолчанию 8081)
+3. Витрина — из собранного JAR:
+   `java -jar storefront/target/storefront-0.0.1-SNAPSHOT.jar`
+   (или класс `MyMarketAppApplication` из IDE) — H2 в памяти по умолчанию,
    Redis на `localhost:6379`, платежи на `http://localhost:8081`.
+
+## Сценарий использования
+
+1. Откройте витрину <http://localhost:8080/> — каталог товаров (поиск, сортировка, пагинация).
+2. Добавьте товар кнопкой «🛒» или «+» — откроется страница товара, затем переходите в корзину.
+3. В корзине видны товары, цены, сумма и **баланс счёта**; меняйте количество, удаляйте позиции.
+4. Нажмите «Купить» — витрина запросит баланс в сервисе платежей, спишет сумму заказа
+   и откроет страницу оформленного заказа; заказы — кнопка «Заказы».
+5. Если средств мало или сервис платежей недоступен — кнопка «Купить» отключена,
+   на странице корзины показано сообщение; при прямом POST `/buy` вернётся 402/503.
 
 ## Настройки
 
