@@ -2,6 +2,7 @@ package ru.yandex.practicum.mymarket.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWebTestClient;
@@ -16,9 +17,12 @@ import ru.yandex.practicum.mymarket.config.StubPaymentConfig;
 import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.dto.SortOption;
 import ru.yandex.practicum.mymarket.model.Item;
+import ru.yandex.practicum.mymarket.repository.CartItemRepository;
 import ru.yandex.practicum.mymarket.repository.ItemRepository;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -40,6 +44,21 @@ class ItemCacheTest {
 
     @Autowired
     private ItemRepository itemRepository;
+
+    @Autowired
+    private CartItemRepository cartItemRepository;
+
+    private final List<Long> createdItemIds = new ArrayList<>();
+
+    @AfterEach
+    void isolate() {
+        cartItemRepository.deleteAll().block();
+        createdItemIds.forEach(id -> {
+            deleteKeys(ItemCache.itemKey(id));
+            itemRepository.deleteById(id).block();
+        });
+        createdItemIds.clear();
+    }
 
     @Test
     void itemIsServedFromCacheWithoutSecondDbRead() throws Exception {
@@ -109,6 +128,63 @@ class ItemCacheTest {
 
         String cached = redisTemplate.opsForValue().get(key).block();
         assertThat(cached).contains("\"id\":" + id);
+    }
+
+    @Test
+    void cartViewReadsItemsThroughCacheWithDbFallback() throws Exception {
+        cartItemRepository.deleteAll().block();
+        Item alpha = createItem("Кэш-товар Альфа");
+        Item beta = createItem("Кэш-товар Бета");
+        deleteKeys(ItemCache.itemKey(alpha.getId()));
+        deleteKeys(ItemCache.itemKey(beta.getId()));
+
+        addToCart(alpha.getId());
+        addToCart(beta.getId());
+
+        String coldBody = getBody("/cart/items");
+        assertThat(coldBody)
+                .contains(alpha.getTitle())
+                .contains(beta.getTitle());
+        assertThat(redisTemplate.opsForValue().get(ItemCache.itemKey(alpha.getId())).block())
+                .isNotNull();
+        assertThat(redisTemplate.opsForValue().get(ItemCache.itemKey(beta.getId())).block())
+                .isNotNull();
+
+        markCachedItem(alpha.getId());
+        redisTemplate.delete(ItemCache.itemKey(beta.getId())).block();
+
+        String mixedBody = getBody("/cart/items");
+
+        assertThat(mixedBody).contains(MARKER);
+        assertThat(mixedBody).doesNotContain(alpha.getTitle());
+        assertThat(mixedBody).contains(beta.getTitle());
+    }
+
+    private Item createItem(String title) {
+        Item item = itemRepository
+                .save(new Item(title, "Описание из кэша", "images/ball.svg", 250))
+                .block();
+        assertThat(item).isNotNull();
+        createdItemIds.add(item.getId());
+        return item;
+    }
+
+    private void addToCart(long itemId) {
+        webTestClient.post().uri("/items?id=" + itemId + "&action=PLUS")
+                .exchange()
+                .expectStatus().is3xxRedirection();
+    }
+
+    private void markCachedItem(long id) throws Exception {
+        String json = redisTemplate.opsForValue().get(ItemCache.itemKey(id)).block();
+        assertThat(json).isNotNull();
+        ItemDto cached = objectMapper.readValue(json, ItemDto.class);
+        ItemDto marked = new ItemDto(cached.id(), MARKER, cached.description(),
+                cached.imgPath(), cached.price(), cached.count());
+        redisTemplate.opsForValue()
+                .set(ItemCache.itemKey(id), objectMapper.writeValueAsString(marked),
+                        Duration.ofMinutes(5))
+                .block();
     }
 
     private String getBody(String uri) {

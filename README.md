@@ -85,6 +85,7 @@ docker compose up --build
 | `app.cache.item-ttl` | `CACHE_ITEM_TTL` | `10m` | TTL кеша товаров и страниц |
 | `app.payments.base-url` | `PAYMENTS_BASE_URL` | `http://localhost:8081` | Базовый URL платежей |
 | `app.payments.account-id` | `PAYMENTS_ACCOUNT_ID` | `1` | Демо-счёт покупателя |
+| `app.payments.timeout` | `PAYMENTS_TIMEOUT` | `5s` | Тайм-аут ожидания ответа сервиса платежей |
 | `app.seed.enabled` | `SEED_DATABASE` | `true` | Загружать демо-товары |
 | `server.port` (payments) | `SERVER_PORT` | `8081` | Порт сервиса платежей |
 | `app.payments.initial-balance` | `INITIAL_BALANCE` | `100000` | Стартовый баланс счёта |
@@ -170,6 +171,7 @@ Redis-контейнер Testcontainers стартует один раз. Сре
 ```
 
 Кеш витрины: `ItemCache` (reactive, ключи `storefront:item:{id}` и `storefront:page:...`,
-прозрачный fallback в БД при сбое кеша). Платежи: `PaymentServiceClient` на сгенерированном
-`ApiClient`/`AccountsApi`/`PaymentsApi`, маппинг ошибок: `409` → `InsufficientFundsException`
-(402), недоступный сервис → `PaymentUnavailableException` (503).
+прозрачный fallback в БД при сбое кеша); витрина и корзина читают товары через этот кеш.
+Платежи: `PaymentServiceClient` на сгенерированном `ApiClient`/`AccountsApi`/`PaymentsApi`
+с тайм-аутом ответа (`app.payments.timeout`), маппинг ошибок: `409` → `InsufficientFundsException`
+(402), недоступный сервис или истёкший тайм-аут → `PaymentUnavailableException` (503).

@@ -7,7 +7,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import ru.yandex.practicum.mymarket.cache.ItemCache;
 import ru.yandex.practicum.mymarket.dto.Action;
+import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.exception.NotFoundException;
 import ru.yandex.practicum.mymarket.model.CartItem;
 import ru.yandex.practicum.mymarket.model.Item;
@@ -15,9 +17,15 @@ import ru.yandex.practicum.mymarket.repository.CartItemRepository;
 import ru.yandex.practicum.mymarket.repository.ItemRepository;
 
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -35,11 +43,21 @@ class CartServiceTest {
     @Mock
     private ItemRepository itemRepository;
 
+    @Mock
+    private ItemCache itemCache;
+
+    private final Map<String, ItemDto> cacheEntries = new HashMap<>();
+
     private CartService cartService;
 
     @BeforeEach
     void setUp() {
-        cartService = new CartService(cartItemRepository, itemRepository);
+        cacheEntries.clear();
+        lenient().when(itemCache.get(anyString(), eq(ItemDto.class)))
+                .thenAnswer(invocation -> Mono.justOrEmpty(
+                        cacheEntries.get(invocation.<String>getArgument(0))));
+        lenient().when(itemCache.put(anyString(), any())).thenReturn(Mono.empty());
+        cartService = new CartService(cartItemRepository, itemRepository, itemCache);
     }
 
     private Item item(long id, long price) {
@@ -173,7 +191,34 @@ class CartServiceTest {
     }
 
     @Test
-    void getCartViewReturnsItemsAndTotal() {
+    void getCartViewReadsCachedItemsAndLoadsMissingFromDb() {
+        Item ball = item(1L, 1490);
+        Item doll = item(2L, 1890);
+        when(cartItemRepository.findAll()).thenReturn(Flux.just(
+                cartItem(1L, 1L, 2),
+                cartItem(2L, 2L, 1)));
+        cacheEntries.put(ItemCache.itemKey(1L), ItemDto.of(ball, 0));
+        when(itemRepository.findAllByIdOrdered(List.of(2L)))
+                .thenReturn(Flux.just(doll));
+
+        StepVerifier.create(cartService.getCartView())
+                .assertNext(view -> {
+                    assertThat(view.items()).hasSize(2);
+                    assertThat(view.items().get(0).id()).isEqualTo(1L);
+                    assertThat(view.items().get(0).count()).isEqualTo(2);
+                    assertThat(view.items().get(1).id()).isEqualTo(2L);
+                    assertThat(view.items().get(1).count()).isEqualTo(1);
+                    assertThat(view.total()).isEqualTo(2L * 1490 + 1890);
+                })
+                .verifyComplete();
+
+        verify(itemRepository).findAllByIdOrdered(List.of(2L));
+        verify(itemCache).put(ItemCache.itemKey(2L), ItemDto.of(doll, 0));
+        verify(itemCache, never()).put(eq(ItemCache.itemKey(1L)), any());
+    }
+
+    @Test
+    void getCartViewLoadsAllItemsFromDbWhenCacheIsEmpty() {
         Item ball = item(1L, 1490);
         Item doll = item(2L, 1890);
         when(cartItemRepository.findAll()).thenReturn(Flux.just(
@@ -185,9 +230,14 @@ class CartServiceTest {
         StepVerifier.create(cartService.getCartView())
                 .assertNext(view -> {
                     assertThat(view.items()).hasSize(2);
+                    assertThat(view.items().get(0).id()).isEqualTo(1L);
                     assertThat(view.items().get(0).count()).isEqualTo(2);
+                    assertThat(view.items().get(1).id()).isEqualTo(2L);
                     assertThat(view.total()).isEqualTo(2L * 1490 + 1890);
                 })
                 .verifyComplete();
+
+        verify(itemCache).put(ItemCache.itemKey(1L), ItemDto.of(ball, 0));
+        verify(itemCache).put(ItemCache.itemKey(2L), ItemDto.of(doll, 0));
     }
 }

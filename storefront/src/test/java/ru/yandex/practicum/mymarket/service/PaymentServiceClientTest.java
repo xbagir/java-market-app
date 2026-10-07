@@ -8,6 +8,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import ru.yandex.practicum.mymarket.config.PaymentClientConfig;
 import ru.yandex.practicum.mymarket.config.PaymentProperties;
 import ru.yandex.practicum.mymarket.exception.InsufficientFundsException;
 import ru.yandex.practicum.mymarket.exception.PaymentUnavailableException;
@@ -18,6 +19,9 @@ import ru.yandex.practicum.mymarket.payment.api.PaymentsApi;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import reactor.test.StepVerifier;
 
@@ -57,12 +61,12 @@ class PaymentServiceClientTest {
     }
 
     private static PaymentProperties accountId(String basePath, Long accountId) {
-        return new PaymentProperties(basePath, accountId);
+        return new PaymentProperties(basePath, accountId, Duration.ofSeconds(5));
     }
 
     private static PaymentServiceClient clientWith(PaymentProperties properties) {
-        ApiClient apiClient = new ApiClient();
-        apiClient.setBasePath(properties.baseUrl());
+        ApiClient apiClient = new PaymentClientConfig()
+                .paymentApiClient(WebClient.builder(), properties);
         return new PaymentServiceClient(new AccountsApi(apiClient), new PaymentsApi(apiClient),
                 properties);
     }
@@ -103,10 +107,46 @@ class PaymentServiceClientTest {
 
     @Test
     void getBalanceFailsFastWhenServiceIsDown() {
-        PaymentServiceClient down = clientWith(new PaymentProperties("http://127.0.0.1:1", 1L));
+        PaymentServiceClient down = clientWith(
+                new PaymentProperties("http://127.0.0.1:1", 1L, Duration.ofSeconds(5)));
 
         StepVerifier.create(down.getBalance())
                 .expectError(PaymentUnavailableException.class)
                 .verify();
+    }
+
+    @Test
+    void getBalanceMapsDelayedResponseToPaymentUnavailable() throws IOException {
+        ExecutorService executor = Executors.newCachedThreadPool(runnable -> {
+            Thread thread = new Thread(runnable, "slow-payment-server");
+            thread.setDaemon(true);
+            return thread;
+        });
+        HttpServer slow = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        slow.setExecutor(executor);
+        slow.createContext("/api/v1/accounts/1", exchange -> {
+            try {
+                Thread.sleep(2000);
+                respond(exchange, 200, "{\"accountId\":1,\"balance\":100000}");
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            } catch (IOException ignored) {
+                // клиент уже отключился, не дождавшись ответа
+            }
+        });
+        slow.start();
+        try {
+            PaymentProperties properties = new PaymentProperties(
+                    "http://127.0.0.1:" + slow.getAddress().getPort(), 1L,
+                    Duration.ofMillis(500));
+            PaymentServiceClient delayed = clientWith(properties);
+
+            StepVerifier.create(delayed.getBalance())
+                    .expectError(PaymentUnavailableException.class)
+                    .verify(Duration.ofSeconds(3));
+        } finally {
+            slow.stop(0);
+            executor.shutdownNow();
+        }
     }
 }

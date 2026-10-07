@@ -38,6 +38,7 @@ public class PaymentServiceClient implements PaymentGateway {
     public Mono<Long> getBalance() {
         return accountsApi.getAccount(properties.accountId())
                 .map(AccountResponse::getBalance)
+                .onErrorMap(PaymentServiceClient::isTimeout, this::unavailable)
                 .onErrorMap(WebClientResponseException.class, this::unavailable)
                 .onErrorMap(WebClientRequestException.class, this::unavailable);
     }
@@ -51,6 +52,7 @@ public class PaymentServiceClient implements PaymentGateway {
                 .doOnNext(payment -> log.info("Charged {} from account {}, balance after {}",
                         payment.getAmount(), payment.getAccountId(), payment.getBalanceAfter()))
                 .then()
+                .onErrorMap(PaymentServiceClient::isTimeout, this::unavailable)
                 .onErrorMap(WebClientResponseException.class, ex -> {
                     if (ex.getStatusCode().value() == HttpStatus.CONFLICT.value()) {
                         return new InsufficientFundsException(amount, null);
@@ -60,7 +62,22 @@ public class PaymentServiceClient implements PaymentGateway {
                 .onErrorMap(WebClientRequestException.class, this::unavailable);
     }
 
-    private PaymentUnavailableException unavailable(Exception ex) {
+    private static boolean isTimeout(Throwable error) {
+        Throwable current = error;
+        while (current != null) {
+            if (current instanceof java.util.concurrent.TimeoutException
+                    || current instanceof io.netty.handler.timeout.TimeoutException) {
+                return true;
+            }
+            if (current.getCause() == current) {
+                break;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    private PaymentUnavailableException unavailable(Throwable ex) {
         log.error("Payment service request failed: {}", ex.getMessage());
         return new PaymentUnavailableException("Сервис платежей временно недоступен", ex);
     }
