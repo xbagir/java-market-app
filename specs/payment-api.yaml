@@ -1,0 +1,134 @@
+openapi: 3.0.3
+info:
+  title: Payment Service API
+  description: >
+    Интеграция основного приложения «Витрина интернет-магазина» с RESTful-сервисом
+    платежей. Обмен данными выполняется в формате JSON.
+  version: "1.0.0"
+servers:
+  - url: http://localhost:8081
+    description: Локальный запуск сервиса платежей
+tags:
+  - name: accounts
+    description: Счёт покупателя и запрос баланса
+  - name: payments
+    description: "Платежи: списание баланса"
+paths:
+  /api/v1/accounts/{accountId}:
+    get:
+      tags: [accounts]
+      operationId: getAccount
+      summary: Запрос баланса счёта
+      parameters:
+        - name: accountId
+          in: path
+          required: true
+          description: Идентификатор счёта покупателя
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      responses:
+        "200":
+          description: Текущий баланс счёта
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountResponse"
+        "404":
+          $ref: "#/components/responses/ProblemResponse"
+  /api/v1/payments:
+    post:
+      tags: [payments]
+      operationId: createPayment
+      summary: Провести списание баланса (оплата заказа)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentRequest"
+      responses:
+        "201":
+          description: Списание проведено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentResponse"
+        "400":
+          $ref: "#/components/responses/ProblemResponse"
+        "404":
+          $ref: "#/components/responses/ProblemResponse"
+        "409":
+          description: Недостаточно средств на счёте
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+components:
+  schemas:
+    AccountResponse:
+      type: object
+      description: Счёт покупателя
+      required: [accountId, balance]
+      properties:
+        accountId:
+          type: integer
+          format: int64
+          description: Идентификатор счёта
+        balance:
+          type: integer
+          format: int64
+          description: Баланс в рублях
+    PaymentRequest:
+      type: object
+      description: Запрос на списание баланса
+      required: [accountId, amount]
+      properties:
+        accountId:
+          type: integer
+          format: int64
+          description: Идентификатор счёта
+        amount:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Сумма списания в рублях
+    PaymentResponse:
+      type: object
+      description: Проведённое списание
+      required: [accountId, amount, balanceAfter]
+      properties:
+        accountId:
+          type: integer
+          format: int64
+        amount:
+          type: integer
+          format: int64
+          description: Сумма списания в рублях
+        balanceAfter:
+          type: integer
+          format: int64
+          description: Баланс после списания в рублях
+    Problem:
+      type: object
+      description: Ошибка в формате problem details (RFC 9457)
+      required: [title, status]
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+  responses:
+    ProblemResponse:
+      description: Ошибка обработки запроса
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
