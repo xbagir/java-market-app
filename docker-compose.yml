@@ -16,10 +16,44 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  redis:
+    image: redis:7-alpine
+    container_name: market-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  payments:
+    build:
+      context: .
+      dockerfile: payment-service/Dockerfile
+    image: market-payments:latest
+    container_name: market-payments
+    ports:
+      - "${PAYMENTS_PORT:-8081}:8081"
+    environment:
+      INITIAL_BALANCE: ${INITIAL_BALANCE:-100000}
+      JAVA_OPTS: ${JAVA_OPTS:-}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8081/api/v1/accounts/1 > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    init: true
+    stop_grace_period: 30s
+    restart: unless-stopped
+
   app:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: storefront/Dockerfile
     image: market-app:latest
     container_name: market-app
     ports:
@@ -28,11 +62,17 @@ services:
       SPRING_R2DBC_URL: r2dbc:postgresql://db:5432/${POSTGRES_DB:-market}
       SPRING_R2DBC_USERNAME: ${POSTGRES_USER:-market}
       SPRING_R2DBC_PASSWORD: ${POSTGRES_PASSWORD:-market}
+      REDIS_HOST: redis
+      PAYMENTS_BASE_URL: http://payments:8081
       SEED_DATABASE: "true"
       SPRING_PROFILES_ACTIVE: prod
       JAVA_OPTS: ${JAVA_OPTS:-}
     depends_on:
       db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      payments:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8080/ > /dev/null || exit 1"]
