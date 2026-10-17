@@ -10,11 +10,14 @@ import org.springframework.web.bind.annotation.RequestParam;
 import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.dto.Paging;
 import ru.yandex.practicum.mymarket.dto.SortOption;
+import ru.yandex.practicum.mymarket.model.UserPrincipal;
+import ru.yandex.practicum.mymarket.security.CurrentUserProvider;
 import ru.yandex.practicum.mymarket.service.CartService;
 import ru.yandex.practicum.mymarket.service.ItemService;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -29,10 +32,13 @@ public class MarketController {
 
     private final ItemService itemService;
     private final CartService cartService;
+    private final CurrentUserProvider currentUserProvider;
 
-    public MarketController(ItemService itemService, CartService cartService) {
+    public MarketController(ItemService itemService, CartService cartService,
+                            CurrentUserProvider currentUserProvider) {
         this.itemService = itemService;
         this.cartService = cartService;
+        this.currentUserProvider = currentUserProvider;
     }
 
     @GetMapping({"/", "/items"})
@@ -42,7 +48,7 @@ public class MarketController {
                               @RequestParam(name = "pageSize", defaultValue = "5") @Min(2) @Max(100) int pageSize,
                               Model model) {
         return itemService.findPage(search, sort, pageNumber, pageSize)
-                .zipWith(cartService.quantitiesByItemIds())
+                .zipWith(currentQuantities())
                 .doOnNext(tuple -> {
                     var page = tuple.getT1();
                     var quantities = tuple.getT2();
@@ -55,16 +61,42 @@ public class MarketController {
                     model.addAttribute("paging", new Paging(pageSize, page.getNumber() + 1,
                             page.hasPrevious(), page.hasNext()));
                 })
-                .thenReturn("items");
+                .then(currentUserProvider.get()
+                        .map(principal -> render(model, principal, "items"))
+                        .defaultIfEmpty(render(model, null, "items")));
     }
 
     @GetMapping("/items/{id}")
     public Mono<String> item(@PathVariable long id, Model model) {
         return itemService.findById(id)
-                .zipWith(cartService.getQuantityByItemId(id))
+                .zipWith(currentQuantity(id))
                 .doOnNext(tuple -> model.addAttribute("item",
                         tuple.getT1().withCount(tuple.getT2())))
-                .thenReturn("item");
+                .then(currentUserProvider.get()
+                        .map(principal -> render(model, principal, "item"))
+                        .defaultIfEmpty(render(model, null, "item")));
+    }
+
+    private Mono<Map<Long, Integer>> currentQuantities() {
+        return currentUserProvider.getUserId()
+                .flatMap(cartService::quantitiesByItemIds)
+                .defaultIfEmpty(Map.of());
+    }
+
+    private Mono<Integer> currentQuantity(long itemId) {
+        return currentUserProvider.getUserId()
+                .flatMap(userId -> cartService.getQuantityByItemId(userId, itemId))
+                .defaultIfEmpty(0);
+    }
+
+    private String render(Model model, UserPrincipal principal, String view) {
+        if (principal != null) {
+            model.addAttribute("authenticated", true);
+            model.addAttribute("username", principal.getUsername());
+        } else {
+            model.addAttribute("authenticated", false);
+        }
+        return view;
     }
 
     private List<List<ItemDto>> toGrid(List<ItemDto> items) {

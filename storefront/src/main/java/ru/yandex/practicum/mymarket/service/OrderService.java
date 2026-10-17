@@ -46,8 +46,8 @@ public class OrderService {
     }
 
     @Transactional
-    public Mono<OrderDto> createOrderFromCart() {
-        return cartService.getCartItems()
+    public Mono<OrderDto> createOrderFromCart(long userId) {
+        return cartService.getCartItems(userId)
                 .collectList()
                 .flatMap(cartItems -> {
                     if (cartItems.isEmpty()) {
@@ -61,29 +61,30 @@ public class OrderService {
                                         .mapToLong(ci -> itemsById.get(ci.getItemId()).getPrice()
                                                 * ci.getQuantity())
                                         .sum();
-                                return payForOrder(totalSum)
-                                        .then(Mono.defer(() -> saveOrder(cartItems, itemsById, totalSum)));
+                                return payForOrder(userId, totalSum)
+                                        .then(Mono.defer(() -> saveOrder(userId, cartItems,
+                                                itemsById, totalSum)));
                             });
                 })
-                .doOnSuccess(order -> log.info("Created order {} with total {}",
-                        order.id(), order.totalSum()));
+                .doOnSuccess(order -> log.info("Created order {} of user {} with total {}",
+                        order.id(), userId, order.totalSum()));
     }
 
-    private Mono<Void> payForOrder(long totalSum) {
-        return paymentGateway.getBalance()
+    private Mono<Void> payForOrder(long userId, long totalSum) {
+        return paymentGateway.getBalance(userId)
                 .flatMap(balance -> {
                     if (balance < totalSum) {
                         return Mono.<Void>error(
                                 new InsufficientFundsException(totalSum, balance));
                     }
-                    return paymentGateway.charge(totalSum);
+                    return paymentGateway.charge(userId, totalSum);
                 });
     }
 
-    private Mono<OrderDto> saveOrder(List<CartItem> cartItems,
+    private Mono<OrderDto> saveOrder(long userId, List<CartItem> cartItems,
                                      Map<Long, Item> itemsById,
                                      long totalSum) {
-        Order order = new Order();
+        Order order = new Order(userId);
         order.setTotalSum(totalSum);
         return orderRepository.save(order)
                 .flatMap(saved -> {
@@ -93,19 +94,20 @@ public class OrderService {
                                     itemsById.get(ci.getItemId()).getPrice()))
                             .toList();
                     return orderItemRepository.saveAll(orderItems)
-                            .then(cartService.clear())
+                            .then(cartService.clear(userId))
                             .thenReturn(OrderDto.of(saved, orderItems, itemsById));
                 });
     }
 
-    public Mono<OrderDto> getOrder(long id) {
+    public Mono<OrderDto> getOrder(long userId, long id) {
         return orderRepository.findById(id)
+                .filter(order -> order.getUserId() == userId)
                 .switchIfEmpty(Mono.error(new NotFoundException("Заказ с id " + id + " не найден")))
                 .flatMap(this::toOrderDto);
     }
 
-    public Mono<List<OrderDto>> getOrders() {
-        return orderRepository.findAllByOrderByIdDesc().collectList()
+    public Mono<List<OrderDto>> getOrders(long userId) {
+        return orderRepository.findAllByUserIdOrderByIdDesc(userId).collectList()
                 .flatMap(orders -> {
                     if (orders.isEmpty()) {
                         return Mono.just(List.<OrderDto>of());

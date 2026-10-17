@@ -10,6 +10,9 @@ public class CartItem {
     @Id
     private Long id;
 
+    @Column("user_id")
+    private long userId;
+
     @Column("item_id")
     private long itemId;
 
@@ -18,13 +21,18 @@ public class CartItem {
     protected CartItem() {
     }
 
-    public CartItem(long itemId, int quantity) {
+    public CartItem(long userId, long itemId, int quantity) {
+        this.userId = userId;
         this.itemId = itemId;
         this.quantity = quantity;
     }
 
     public Long getId() {
         return id;
+    }
+
+    public long getUserId() {
+        return userId;
     }
 
     public long getItemId() {

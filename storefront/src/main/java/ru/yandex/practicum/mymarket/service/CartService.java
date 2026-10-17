@@ -2,8 +2,8 @@ package ru.yandex.practicum.mymarket.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import ru.yandex.practicum.mymarket.cache.ItemCache;
 import ru.yandex.practicum.mymarket.dto.Action;
@@ -39,35 +39,32 @@ public class CartService {
         this.itemCache = itemCache;
     }
 
-    @Transactional
-    public Mono<Void> update(long itemId, Action action) {
+    public Mono<Void> update(long userId, long itemId, Action action) {
         return itemRepository.findById(itemId)
                 .switchIfEmpty(Mono.error(new NotFoundException("Товар с id " + itemId + " не найден")))
-                .flatMap(item -> cartItemRepository.findByItemId(itemId)
+                .flatMap(item -> cartItemRepository.findByUserIdAndItemId(userId, itemId)
                         .flatMap(cartItem -> applyAction(cartItem, action).thenReturn(Boolean.TRUE))
                         .defaultIfEmpty(Boolean.FALSE)
                         .flatMap(found -> {
                             if (found || action != Action.PLUS) {
                                 return Mono.empty();
                             }
-                            log.debug("Adding item {} to cart", itemId);
-                            return cartItemRepository.save(new CartItem(itemId, 1)).then();
+                            return addItem(userId, itemId);
                         }));
     }
 
     private Mono<Void> applyAction(CartItem cartItem, Action action) {
+        long userId = cartItem.getUserId();
         long itemId = cartItem.getItemId();
         return switch (action) {
             case PLUS -> {
-                log.debug("Incrementing item {} in cart", itemId);
-                cartItem.setQuantity(cartItem.getQuantity() + 1);
-                yield cartItemRepository.save(cartItem).then();
+                log.debug("Incrementing item {} in cart of user {}", itemId, userId);
+                yield cartItemRepository.incrementQuantity(userId, itemId).then();
             }
             case MINUS -> {
                 if (cartItem.getQuantity() > 1) {
-                    log.debug("Decrementing item {} in cart", itemId);
-                    cartItem.setQuantity(cartItem.getQuantity() - 1);
-                    yield cartItemRepository.save(cartItem).then();
+                    log.debug("Decrementing item {} in cart of user {}", itemId, userId);
+                    yield cartItemRepository.decrementQuantity(userId, itemId).then();
                 }
                 log.debug("Removing item {} from cart (quantity was 1)", itemId);
                 yield cartItemRepository.delete(cartItem);
@@ -79,12 +76,22 @@ public class CartService {
         };
     }
 
-    public Flux<CartItem> getCartItems() {
-        return cartItemRepository.findAll();
+    private Mono<Void> addItem(long userId, long itemId) {
+        log.debug("Adding item {} to cart of user {}", itemId, userId);
+        return cartItemRepository.incrementQuantity(userId, itemId)
+                .filter(rows -> rows == 0)
+                .flatMap(rows -> cartItemRepository.save(new CartItem(userId, itemId, 1)).then())
+                .onErrorResume(DataIntegrityViolationException.class,
+                        ex -> cartItemRepository.incrementQuantity(userId, itemId).then())
+                .then();
     }
 
-    public Mono<CartView> getCartView() {
-        return cartItemRepository.findAll()
+    public Flux<CartItem> getCartItems(long userId) {
+        return cartItemRepository.findAllByUserId(userId);
+    }
+
+    public Mono<CartView> getCartView(long userId) {
+        return cartItemRepository.findAllByUserId(userId)
                 .collectMap(CartItem::getItemId, CartItem::getQuantity)
                 .flatMap(quantities -> {
                     if (quantities.isEmpty()) {
@@ -140,19 +147,21 @@ public class CartService {
                 .collectMap(ItemDto::id, dto -> dto);
     }
 
-    public Mono<Map<Long, Integer>> quantitiesByItemIds() {
-        return cartItemRepository.findAll()
+    public Mono<Map<Long, Integer>> quantitiesByItemIds(long userId) {
+        return cartItemRepository.findAllByUserId(userId)
                 .collectMap(CartItem::getItemId, CartItem::getQuantity);
     }
 
-    public Mono<Integer> getQuantityByItemId(long itemId) {
-        return cartItemRepository.findByItemId(itemId)
+    public Mono<Integer> getQuantityByItemId(long userId, long itemId) {
+        return cartItemRepository.findByUserIdAndItemId(userId, itemId)
                 .map(CartItem::getQuantity)
                 .defaultIfEmpty(0);
     }
 
-    public Mono<Void> clear() {
-        log.info("Clearing cart");
-        return cartItemRepository.deleteAll();
+    public Mono<Void> clear(long userId) {
+        log.info("Clearing cart of user {}", userId);
+        return cartItemRepository.findAllByUserId(userId)
+                .flatMap(cartItemRepository::delete)
+                .then();
     }
 }
