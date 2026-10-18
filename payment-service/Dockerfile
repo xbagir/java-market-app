@@ -4,6 +4,7 @@ WORKDIR /app
 COPY pom.xml .
 COPY storefront/pom.xml storefront/pom.xml
 COPY payment-service/pom.xml payment-service/pom.xml
+COPY auth-server/pom.xml auth-server/pom.xml
 COPY specs ./specs
 RUN mvn -B -pl payment-service -am dependency:go-offline || for i in 1 2 3 4 5; do sleep 5; mvn -B -pl payment-service -am dependency:go-offline && break; done
 
@@ -20,5 +21,5 @@ USER app
 EXPOSE 8081
 ENV JAVA_OPTS=""
 HEALTHCHECK --interval=10s --timeout=5s --start-period=60s --retries=5 \
-  CMD curl -fsS http://localhost:8081/api/v1/accounts/1 > /dev/null || exit 1
+  CMD curl -fsS http://localhost:8081/health > /dev/null || exit 1
 ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/payment-service.jar"]

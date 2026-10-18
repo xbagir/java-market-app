@@ -29,6 +29,31 @@ services:
       start_period: 5s
     restart: unless-stopped
 
+  auth:
+    build:
+      context: .
+      dockerfile: auth-server/Dockerfile
+    image: market-auth:latest
+    container_name: market-auth
+    ports:
+      - "${AUTH_PORT:-9000}:9000"
+    environment:
+      AUTH_SERVER_ISSUER: ${AUTH_SERVER_ISSUER:-http://localhost:9000}
+      STOREFRONT_CLIENT_ID: ${AUTH_STOREFRONT_CLIENT_ID:-storefront}
+      STOREFRONT_CLIENT_SECRET: ${AUTH_STOREFRONT_CLIENT_SECRET:-storefront-secret}
+      RESOURCE_SERVER_CLIENT_ID: payment-client
+      RESOURCE_SERVER_CLIENT_SECRET: ${PAYMENT_CLIENT_SECRET:-payment-client-secret}
+      JAVA_OPTS: ${JAVA_OPTS:-}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/health > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    init: true
+    stop_grace_period: 30s
+    restart: unless-stopped
+
   payments:
     build:
       context: .
@@ -39,9 +64,13 @@ services:
       - "${PAYMENTS_PORT:-8081}:8081"
     environment:
       INITIAL_BALANCE: ${INITIAL_BALANCE:-100000}
+      AUTH_JWK_SET_URI: http://auth:9000/oauth2/jwks
       JAVA_OPTS: ${JAVA_OPTS:-}
+    depends_on:
+      auth:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8081/api/v1/accounts/1 > /dev/null || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8081/health > /dev/null || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -64,6 +93,11 @@ services:
       SPRING_R2DBC_PASSWORD: ${POSTGRES_PASSWORD:-market}
       REDIS_HOST: redis
       PAYMENTS_BASE_URL: http://payments:8081
+      AUTH_TOKEN_URI: http://auth:9000/oauth2/token
+      AUTH_STOREFRONT_CLIENT_ID: ${AUTH_STOREFRONT_CLIENT_ID:-storefront}
+      AUTH_STOREFRONT_CLIENT_SECRET: ${AUTH_STOREFRONT_CLIENT_SECRET:-storefront-secret}
+      SEED_USERNAME: ${SEED_USERNAME:-user}
+      SEED_PASSWORD: ${SEED_PASSWORD:-password}
       SEED_DATABASE: "true"
       SPRING_PROFILES_ACTIVE: prod
       JAVA_OPTS: ${JAVA_OPTS:-}
@@ -71,6 +105,8 @@ services:
       db:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      auth:
         condition: service_healthy
       payments:
         condition: service_healthy
