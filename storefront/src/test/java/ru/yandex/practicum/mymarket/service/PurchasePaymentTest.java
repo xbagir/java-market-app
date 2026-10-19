@@ -14,16 +14,19 @@ import ru.yandex.practicum.mymarket.config.StubPaymentConfig;
 import ru.yandex.practicum.mymarket.config.StubPaymentGateway;
 import ru.yandex.practicum.mymarket.model.Item;
 import ru.yandex.practicum.mymarket.model.Order;
+import ru.yandex.practicum.mymarket.model.User;
 import ru.yandex.practicum.mymarket.repository.CartItemRepository;
 import ru.yandex.practicum.mymarket.repository.ItemRepository;
 import ru.yandex.practicum.mymarket.repository.OrderItemRepository;
 import ru.yandex.practicum.mymarket.repository.OrderRepository;
+import ru.yandex.practicum.mymarket.repository.UserRepository;
 
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
-
 import static org.hamcrest.Matchers.containsString;
+import static org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.csrf;
+import static org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.mockUser;
 
 @SpringBootTest
 @AutoConfigureWebTestClient
@@ -48,10 +51,17 @@ class PurchasePaymentTest {
     @Autowired
     private OrderItemRepository orderItemRepository;
 
+    @Autowired
+    private UserRepository userRepository;
+
+    private WebTestClient buyerClient;
+    private long userId;
+
     private Item ball;
 
     @BeforeEach
     void setUp() {
+        buyerClient = webTestClient.mutateWith(mockUser("user").roles("USER")).mutateWith(csrf());
         paymentGateway.reset();
         orderItemRepository.deleteAll()
                 .then(cartItemRepository.deleteAll())
@@ -61,6 +71,9 @@ class PurchasePaymentTest {
                         "images/ball.svg", 1490)))
                 .block();
         ball = itemRepository.findAll().blockFirst();
+        User user = userRepository.findByUsername("user").block();
+        assertThat(user).isNotNull();
+        userId = user.getId();
     }
 
     @AfterEach
@@ -73,7 +86,7 @@ class PurchasePaymentTest {
         addToCart(ball);
         long ordersBefore = ordersCount();
 
-        webTestClient.post().uri("/buy")
+        buyerClient.post().uri("/buy")
                 .exchange()
                 .expectStatus().is3xxRedirection()
                 .expectHeader().value("Location",
@@ -81,7 +94,7 @@ class PurchasePaymentTest {
                                 .startsWith("/orders/"));
 
         assertThat(paymentGateway.charges()).containsExactly(ball.getPrice());
-        assertThat(paymentGateway.getBalance().block())
+        assertThat(paymentGateway.getBalance(userId).block())
                 .isEqualTo(100_000L - ball.getPrice());
         assertThat(ordersCount()).isEqualTo(ordersBefore + 1);
     }
@@ -92,13 +105,13 @@ class PurchasePaymentTest {
         addToCart(ball);
         long ordersBefore = ordersCount();
 
-        webTestClient.post().uri("/buy")
+        buyerClient.post().uri("/buy")
                 .exchange()
                 .expectStatus().isEqualTo(402)
                 .expectBody(String.class).value(containsString("Недостаточно средств"));
 
         assertThat(paymentGateway.charges()).isEmpty();
-        assertThat(paymentGateway.getBalance().block()).isEqualTo(10L);
+        assertThat(paymentGateway.getBalance(userId).block()).isEqualTo(10L);
         assertThat(ordersCount()).isEqualTo(ordersBefore);
     }
 
@@ -108,7 +121,7 @@ class PurchasePaymentTest {
         addToCart(ball);
         long ordersBefore = ordersCount();
 
-        webTestClient.post().uri("/buy")
+        buyerClient.post().uri("/buy")
                 .exchange()
                 .expectStatus().isEqualTo(503)
                 .expectBody(String.class).value(containsString("временно недоступен"));
@@ -119,7 +132,7 @@ class PurchasePaymentTest {
 
     @Test
     void cartPageShowsCurrentBalance() {
-        webTestClient.get().uri("/cart/items")
+        buyerClient.get().uri("/cart/items")
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody(String.class).value(containsString("Баланс: 100000 руб."));
@@ -130,7 +143,7 @@ class PurchasePaymentTest {
         paymentGateway.setBalance(10);
         addToCart(ball);
 
-        webTestClient.get().uri("/cart/items")
+        buyerClient.get().uri("/cart/items")
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody(String.class)
@@ -143,7 +156,7 @@ class PurchasePaymentTest {
         paymentGateway.setServiceDown(true);
         addToCart(ball);
 
-        webTestClient.get().uri("/cart/items")
+        buyerClient.get().uri("/cart/items")
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody(String.class)
@@ -152,13 +165,13 @@ class PurchasePaymentTest {
     }
 
     private void addToCart(Item item) {
-        webTestClient.post().uri("/items?id=" + item.getId() + "&action=PLUS")
+        buyerClient.post().uri("/items?id=" + item.getId() + "&action=PLUS")
                 .exchange()
                 .expectStatus().is3xxRedirection();
     }
 
     private long ordersCount() {
-        List<Order> orders = orderRepository.findAllByOrderByIdDesc().collectList().block();
+        List<Order> orders = orderRepository.findAll().collectList().block();
         return orders == null ? 0L : orders.size();
     }
 }

@@ -1,30 +1,55 @@
 package ru.yandex.practicum.payment;
 
-import org.junit.jupiter.api.MethodOrderer;
-import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWebTestClient;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.web.reactive.server.WebTestClient;
 
-import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.is;
+import static org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.mockJwt;
 
 @SpringBootTest
 @AutoConfigureWebTestClient
-@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class PaymentServiceApplicationTest {
+
+    private static final SimpleGrantedAuthority READ =
+            new SimpleGrantedAuthority("SCOPE_payment.read");
+    private static final SimpleGrantedAuthority WRITE =
+            new SimpleGrantedAuthority("SCOPE_payment.write");
 
     @Autowired
     private WebTestClient client;
 
+    private WebTestClient asReader() {
+        return client.mutateWith(mockJwt().authorities(READ));
+    }
+
+    private WebTestClient asWriter() {
+        return client.mutateWith(mockJwt().authorities(WRITE));
+    }
+
     @Test
-    @Order(1)
-    void getAccountReturnsBalance() {
+    void healthEndpointIsPublic() {
+        client.get().uri("/health")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.status").value(is("UP"));
+    }
+
+    @Test
+    void requestsWithoutTokenAreUnauthorized() {
         client.get().uri("/api/v1/accounts/1")
+                .exchange()
+                .expectStatus().isUnauthorized();
+    }
+
+    @Test
+    void getAccountReturnsProvisionedBalance() {
+        asReader().get().uri("/api/v1/accounts/1")
                 .accept(MediaType.APPLICATION_JSON)
                 .exchange()
                 .expectStatus().isOk()
@@ -35,24 +60,19 @@ class PaymentServiceApplicationTest {
     }
 
     @Test
-    @Order(2)
-    void createPaymentReturnsCreatedWithBalanceAfter() {
-        client.post().uri("/api/v1/payments")
+    void paymentIsDebitedAndReflectedInBalance() {
+        asWriter().post().uri("/api/v1/payments")
                 .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue("{\"accountId\":1,\"amount\":500}")
+                .bodyValue("{\"accountId\":2,\"amount\":500}")
                 .exchange()
                 .expectStatus().isCreated()
                 .expectHeader().contentType(MediaType.APPLICATION_JSON)
                 .expectBody()
-                .jsonPath("$.accountId").value(is(1))
+                .jsonPath("$.accountId").value(is(2))
                 .jsonPath("$.amount").value(is(500))
                 .jsonPath("$.balanceAfter").value(is(99500));
-    }
 
-    @Test
-    @Order(3)
-    void balanceReflectsPayment() {
-        client.get().uri("/api/v1/accounts/1")
+        asReader().get().uri("/api/v1/accounts/2")
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody()
@@ -60,55 +80,76 @@ class PaymentServiceApplicationTest {
     }
 
     @Test
-    @Order(4)
     void createPaymentReturnsConflictWhenFundsInsufficient() {
-        client.post().uri("/api/v1/payments")
+        asWriter().post().uri("/api/v1/payments")
                 .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue("{\"accountId\":1,\"amount\":999999999}")
+                .bodyValue("{\"accountId\":3,\"amount\":999999999}")
                 .exchange()
                 .expectStatus().isEqualTo(409)
                 .expectHeader().contentTypeCompatibleWith("application/problem+json")
                 .expectBody()
                 .jsonPath("$.title").value(is("Недостаточно средств"))
-                .jsonPath("$.accountId").value(is(1));
+                .jsonPath("$.accountId").value(is(3));
     }
 
     @Test
-    @Order(5)
-    void getAccountReturnsNotFoundForUnknownAccount() {
-        client.get().uri("/api/v1/accounts/99")
+    void getAccountProvisionsUnknownAccount() {
+        asReader().get().uri("/api/v1/accounts/99")
                 .exchange()
-                .expectStatus().isNotFound()
-                .expectHeader().contentTypeCompatibleWith("application/problem+json")
+                .expectStatus().isOk()
                 .expectBody()
-                .jsonPath("$.title").value(is("Счёт не найден"))
-                .jsonPath("$.detail", containsString("99"));
+                .jsonPath("$.accountId").value(is(99))
+                .jsonPath("$.balance").value(is(100000));
     }
 
     @Test
-    @Order(6)
     void createPaymentReturnsBadRequestForInvalidAmount() {
-        client.post().uri("/api/v1/payments")
+        asWriter().post().uri("/api/v1/payments")
                 .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue("{\"accountId\":1,\"amount\":0}")
+                .bodyValue("{\"accountId\":4,\"amount\":0}")
                 .exchange()
                 .expectStatus().isBadRequest();
     }
 
     @Test
-    @Order(7)
     void getAccountReturnsBadRequestForInvalidId() {
-        client.get().uri("/api/v1/accounts/0")
+        asReader().get().uri("/api/v1/accounts/0")
                 .exchange()
                 .expectStatus().isBadRequest();
     }
 
     @Test
-    @Order(8)
     void createPaymentReturnsBadRequestForMissingField() {
-        client.post().uri("/api/v1/payments")
+        asWriter().post().uri("/api/v1/payments")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("{\"accountId\":1}")
+                .exchange()
+                .expectStatus().isBadRequest();
+    }
+
+    @Test
+    void readScopeCannotCreatePayment() {
+        client.mutateWith(mockJwt().authorities(READ))
+                .post().uri("/api/v1/payments")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("{\"accountId\":1,\"amount\":500}")
+                .exchange()
+                .expectStatus().isForbidden();
+    }
+
+    @Test
+    void writeScopeCannotReadAccount() {
+        client.mutateWith(mockJwt().authorities(WRITE))
+                .get().uri("/api/v1/accounts/1")
+                .exchange()
+                .expectStatus().isForbidden();
+    }
+
+    @Test
+    void invalidPaymentAccountIsRejected() {
+        asWriter().post().uri("/api/v1/payments")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("{\"accountId\":0,\"amount\":100}")
                 .exchange()
                 .expectStatus().isBadRequest();
     }

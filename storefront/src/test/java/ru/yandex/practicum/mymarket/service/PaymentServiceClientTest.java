@@ -11,6 +11,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import ru.yandex.practicum.mymarket.config.PaymentClientConfig;
 import ru.yandex.practicum.mymarket.config.PaymentProperties;
 import ru.yandex.practicum.mymarket.exception.InsufficientFundsException;
+import ru.yandex.practicum.mymarket.exception.PaymentUnauthorizedException;
 import ru.yandex.practicum.mymarket.exception.PaymentUnavailableException;
 import ru.yandex.practicum.mymarket.payment.ApiClient;
 import ru.yandex.practicum.mymarket.payment.api.AccountsApi;
@@ -29,6 +30,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class PaymentServiceClientTest {
 
+    private static final long ACCOUNT_ID = 1L;
+
     private HttpServer server;
     private String basePath;
     private PaymentServiceClient client;
@@ -40,6 +43,8 @@ class PaymentServiceClientTest {
                 "{\"accountId\":1,\"balance\":100000}"));
         server.createContext("/api/v1/accounts/99", exchange -> respond(exchange, 404,
                 "{\"status\":404,\"title\":\"Счёт не найден\"}"));
+        server.createContext("/api/v1/accounts/403", exchange -> respond(exchange, 401,
+                "{\"status\":401,\"title\":\"Unauthorized\"}"));
         server.createContext("/api/v1/payments", exchange -> {
             String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
             if (body.contains("999999999")) {
@@ -52,7 +57,7 @@ class PaymentServiceClientTest {
         });
         server.start();
         basePath = "http://127.0.0.1:" + server.getAddress().getPort();
-        client = clientWith(accountId(basePath, 1L));
+        client = clientWith(basePath);
     }
 
     @AfterEach
@@ -60,15 +65,18 @@ class PaymentServiceClientTest {
         server.stop(0);
     }
 
-    private static PaymentProperties accountId(String basePath, Long accountId) {
-        return new PaymentProperties(basePath, accountId, Duration.ofSeconds(5));
+    private static PaymentProperties properties(String basePath) {
+        return new PaymentProperties(basePath, Duration.ofSeconds(5));
+    }
+
+    private static PaymentServiceClient clientWith(String basePath) {
+        return clientWith(properties(basePath));
     }
 
     private static PaymentServiceClient clientWith(PaymentProperties properties) {
-        ApiClient apiClient = new PaymentClientConfig()
-                .paymentApiClient(WebClient.builder(), properties);
-        return new PaymentServiceClient(new AccountsApi(apiClient), new PaymentsApi(apiClient),
-                properties);
+        ApiClient apiClient = PaymentClientConfig.buildApiClient(
+                WebClient.builder(), properties, null);
+        return new PaymentServiceClient(new AccountsApi(apiClient), new PaymentsApi(apiClient));
     }
 
     private static void respond(HttpExchange exchange, int status, String body) throws IOException {
@@ -81,26 +89,31 @@ class PaymentServiceClientTest {
 
     @Test
     void getBalanceReturnsAccountBalance() {
-        assertThat(client.getBalance().block()).isEqualTo(100_000L);
+        assertThat(client.getBalance(ACCOUNT_ID).block()).isEqualTo(100_000L);
     }
 
     @Test
     void chargeCompletesOnSuccessfulPayment() {
-        assertThat(client.charge(500L).block()).isNull();
+        assertThat(client.charge(ACCOUNT_ID, 500L).block()).isNull();
     }
 
     @Test
     void chargeMapsConflictToInsufficientFunds() {
-        StepVerifier.create(client.charge(999_999_999L))
+        StepVerifier.create(client.charge(ACCOUNT_ID, 999_999_999L))
                 .expectError(InsufficientFundsException.class)
                 .verify();
     }
 
     @Test
-    void getBalanceMapsNotFoundToPaymentUnavailable() {
-        PaymentServiceClient missingAccount = clientWith(accountId(basePath, 99L));
+    void getBalanceMapsUnauthorizedToPaymentUnauthorized() {
+        StepVerifier.create(client.getBalance(403L))
+                .expectError(PaymentUnauthorizedException.class)
+                .verify();
+    }
 
-        StepVerifier.create(missingAccount.getBalance())
+    @Test
+    void getBalanceMapsNotFoundToPaymentUnavailable() {
+        StepVerifier.create(client.getBalance(99L))
                 .expectError(PaymentUnavailableException.class)
                 .verify();
     }
@@ -108,9 +121,9 @@ class PaymentServiceClientTest {
     @Test
     void getBalanceFailsFastWhenServiceIsDown() {
         PaymentServiceClient down = clientWith(
-                new PaymentProperties("http://127.0.0.1:1", 1L, Duration.ofSeconds(5)));
+                new PaymentProperties("http://127.0.0.1:1", Duration.ofSeconds(5)));
 
-        StepVerifier.create(down.getBalance())
+        StepVerifier.create(down.getBalance(ACCOUNT_ID))
                 .expectError(PaymentUnavailableException.class)
                 .verify();
     }
@@ -136,12 +149,10 @@ class PaymentServiceClientTest {
         });
         slow.start();
         try {
-            PaymentProperties properties = new PaymentProperties(
-                    "http://127.0.0.1:" + slow.getAddress().getPort(), 1L,
-                    Duration.ofMillis(500));
-            PaymentServiceClient delayed = clientWith(properties);
+            PaymentServiceClient delayed = clientWith(new PaymentProperties(
+                    "http://127.0.0.1:" + slow.getAddress().getPort(), Duration.ofMillis(500)));
 
-            StepVerifier.create(delayed.getBalance())
+            StepVerifier.create(delayed.getBalance(ACCOUNT_ID))
                     .expectError(PaymentUnavailableException.class)
                     .verify(Duration.ofSeconds(3));
         } finally {

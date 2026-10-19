@@ -22,6 +22,8 @@ import java.util.List;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
+import static org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.csrf;
+import static org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.mockUser;
 
 @SpringBootTest
 @AutoConfigureWebTestClient
@@ -46,11 +48,14 @@ class MyMarketAppApplicationTests {
     @Autowired
     private ReactiveStringRedisTemplate redisTemplate;
 
+    private WebTestClient buyerClient;
+
     private Item ball;
     private Item doll;
 
     @BeforeEach
     void setUp() {
+        buyerClient = webTestClient.mutateWith(mockUser("user").roles("USER")).mutateWith(csrf());
         redisTemplate.keys(ItemCache.KEY_PREFIX + "*")
                 .flatMap(redisTemplate::delete)
                 .collectList()
@@ -82,6 +87,16 @@ class MyMarketAppApplicationTests {
     }
 
     @Test
+    void anonymousCatalogHidesPurchaseControls() {
+        webTestClient.get().uri("/items")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(String.class)
+                .value(containsString("Войти"))
+                .value(not(containsString("Выйти")));
+    }
+
+    @Test
     void searchFiltersCatalog() {
         webTestClient.get().uri(uriBuilder -> uriBuilder.path("/items")
                         .queryParam("search", "мяч").build())
@@ -99,35 +114,35 @@ class MyMarketAppApplicationTests {
 
         long expectedTotal = 2L * ball.getPrice() + doll.getPrice();
 
-        webTestClient.get().uri("/cart/items")
+        buyerClient.get().uri("/cart/items")
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody(String.class).value(containsString("Мяч футбольный"))
                 .value(containsString("Кукла «Алиса»"))
                 .value(containsString(String.valueOf(expectedTotal)));
 
-        webTestClient.post().uri("/buy")
+        buyerClient.post().uri("/buy")
                 .exchange()
                 .expectStatus().is3xxRedirection()
                 .expectHeader().value("Location",
                         location -> org.assertj.core.api.Assertions.assertThat(location)
                                 .startsWith("/orders/"));
 
-        Long orderId = orderRepository.findAllByOrderByIdDesc()
+        Long orderId = orderRepository.findAll()
                 .map(ru.yandex.practicum.mymarket.model.Order::getId)
                 .blockFirst();
 
-        webTestClient.get().uri("/orders")
+        buyerClient.get().uri("/orders")
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody(String.class).value(containsString("Заказ №"));
 
-        webTestClient.get().uri("/orders/" + orderId)
+        buyerClient.get().uri("/orders/" + orderId)
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody(String.class).value(containsString("Заказ №" + orderId));
 
-        webTestClient.get().uri("/cart/items")
+        buyerClient.get().uri("/cart/items")
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody(String.class).value(not(containsString("Мяч футбольный")));
@@ -138,28 +153,28 @@ class MyMarketAppApplicationTests {
         addToCart(ball);
         addToCart(ball);
 
-        webTestClient.post().uri("/items?id=" + ball.getId() + "&action=MINUS")
+        buyerClient.post().uri("/items?id=" + ball.getId() + "&action=MINUS")
                 .exchange()
                 .expectStatus().is3xxRedirection();
 
-        webTestClient.get().uri("/cart/items")
+        buyerClient.get().uri("/cart/items")
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody(String.class).value(containsString(String.valueOf(ball.getPrice())));
 
-        webTestClient.post().uri("/cart/items?id=" + ball.getId() + "&action=DELETE")
+        buyerClient.post().uri("/cart/items?id=" + ball.getId() + "&action=DELETE")
                 .exchange()
                 .expectStatus().is3xxRedirection()
                 .expectHeader().location("/cart/items");
 
-        webTestClient.get().uri("/cart/items")
+        buyerClient.get().uri("/cart/items")
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody(String.class).value(not(containsString("Мяч футбольный")));
     }
 
     private void addToCart(Item item) {
-        webTestClient.post().uri("/items?id=" + item.getId() + "&action=PLUS")
+        buyerClient.post().uri("/items?id=" + item.getId() + "&action=PLUS")
                 .exchange()
                 .expectStatus().is3xxRedirection();
     }
