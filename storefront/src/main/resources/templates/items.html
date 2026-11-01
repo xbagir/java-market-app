@@ -18,8 +18,18 @@
                     <h2>
                         <span class="badge text-bg-success">Витрина магазина</span>
                     </h2>
-                    <a href="/orders" class="btn btn-secondary ms-auto bi bi-file-earmark-text"> Заказы</a>
-                    <a href="/cart/items" class="btn btn-secondary bi bi-cart4"> Корзина</a>
+                    <th:block th:if="${authenticated}">
+                        <a href="/orders" class="btn btn-secondary ms-auto bi bi-file-earmark-text"> Заказы</a>
+                        <a href="/cart/items" class="btn btn-secondary bi bi-cart4"> Корзина</a>
+                        <span class="fw-semibold" th:text="${username}"></span>
+                        <form method="post" th:action="@{/logout}">
+                            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+                            <button type="submit" class="btn btn-outline-secondary bi bi-box-arrow-right"> Выйти</button>
+                        </form>
+                    </th:block>
+                    <th:block th:unless="${authenticated}">
+                        <a href="/login" class="btn btn-success ms-auto bi bi-box-arrow-in-right"> Войти</a>
+                    </th:block>
                 </div>
             </div>
         </div>
@@ -62,7 +72,8 @@
                             <span class="badge text-bg-success justify-content-end" th:text="${item.price()}+' руб.'"></span>
                         </h5>
                         <p class="card-text" th:text="${item.description()}"></p>
-                        <form method="post" th:action="@{/items}">
+                        <form method="post" th:action="@{/items}" th:if="${authenticated}">
+                            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
                             <div class="hstack gap-3">
                                 <input type="hidden" name="id" th:value="${item.id()}">
                                 <input type="hidden" name="search" th:value="${search}">
@@ -75,6 +86,7 @@
                                 <button type="submit" class="btn btn-warning ms-auto bi bi-cart4" name="action" value="PLUS" th:if="${item.count()==0}"></button>
                             </div>
                         </form>
+                        <a href="/login" class="btn btn-outline-success w-100" th:unless="${authenticated}">Войти, чтобы купить</a>
                     </div>
                 </div>
                 <div th:unless="${item.id() != -1}">&nbsp;</div>

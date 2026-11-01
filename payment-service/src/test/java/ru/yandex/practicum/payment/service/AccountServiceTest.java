@@ -1,9 +1,12 @@
 package ru.yandex.practicum.payment.service;
 
+import java.util.List;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import reactor.core.publisher.Flux;
+import reactor.core.scheduler.Schedulers;
 import reactor.test.StepVerifier;
-import ru.yandex.practicum.payment.exception.AccountNotFoundException;
 import ru.yandex.practicum.payment.exception.InsufficientFundsException;
 import ru.yandex.practicum.payment.exception.InvalidPaymentException;
 import ru.yandex.practicum.payment.model.AccountResponse;
@@ -31,14 +34,25 @@ class AccountServiceTest {
     }
 
     @Test
-    void getAccountThrowsForUnknownAccount() {
+    void getAccountProvisionsUnknownAccountWithInitialBalance() {
         StepVerifier.create(accountService.getAccount(42L))
-                .expectError(AccountNotFoundException.class)
-                .verify();
+                .assertNext(account -> {
+                    assertThat(account.getAccountId()).isEqualTo(42L);
+                    assertThat(account.getBalance()).isEqualTo(100_000L);
+                })
+                .verifyComplete();
     }
 
     @Test
-    void payDebitsBalanceAtomically() {
+    void accountsAreIsolatedPerUser() {
+        accountService.pay(1L, 30_000L).block();
+
+        assertThat(accountService.getAccount(1L).block().getBalance()).isEqualTo(70_000L);
+        assertThat(accountService.getAccount(2L).block().getBalance()).isEqualTo(100_000L);
+    }
+
+    @Test
+    void payDebitsBalance() {
         PaymentResponse first = accountService.pay(1L, 30_000L).block();
         assertThat(first.getAmount()).isEqualTo(30_000L);
         assertThat(first.getBalanceAfter()).isEqualTo(70_000L);
@@ -51,6 +65,13 @@ class AccountServiceTest {
     }
 
     @Test
+    void payProvisionsAccountOnFirstPayment() {
+        PaymentResponse payment = accountService.pay(77L, 1_490L).block();
+        assertThat(payment.getAccountId()).isEqualTo(77L);
+        assertThat(payment.getBalanceAfter()).isEqualTo(100_000L - 1_490L);
+    }
+
+    @Test
     void payFailsWhenFundsInsufficient() {
         StepVerifier.create(accountService.pay(1L, 100_001L))
                 .expectErrorMatches(error -> error instanceof InsufficientFundsException
@@ -60,13 +81,6 @@ class AccountServiceTest {
 
         AccountResponse account = accountService.getAccount(1L).block();
         assertThat(account.getBalance()).isEqualTo(100_000L);
-    }
-
-    @Test
-    void payFailsForUnknownAccount() {
-        StepVerifier.create(accountService.pay(42L, 100L))
-                .expectError(AccountNotFoundException.class)
-                .verify();
     }
 
     @Test
@@ -85,5 +99,21 @@ class AccountServiceTest {
         StepVerifier.create(accountService.pay(0L, 100L))
                 .expectError(InvalidPaymentException.class)
                 .verify();
+    }
+
+    @Test
+    void concurrentDebitsDoNotLoseUpdates() {
+        int operations = 200;
+        long amount = 100L;
+
+        List<PaymentResponse> results = Flux.range(0, operations)
+                .flatMap(i -> accountService.pay(1L, amount).subscribeOn(Schedulers.boundedElastic()),
+                        32)
+                .collectList()
+                .block();
+
+        assertThat(results).hasSize(operations);
+        assertThat(accountService.getAccount(1L).block().getBalance())
+                .isEqualTo(100_000L - operations * amount);
     }
 }

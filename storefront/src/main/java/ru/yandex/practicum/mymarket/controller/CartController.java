@@ -11,6 +11,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import ru.yandex.practicum.mymarket.dto.Action;
 import ru.yandex.practicum.mymarket.dto.SortOption;
+import ru.yandex.practicum.mymarket.security.CurrentUserProvider;
 import ru.yandex.practicum.mymarket.service.CartService;
 import ru.yandex.practicum.mymarket.service.PaymentGateway;
 
@@ -27,32 +28,42 @@ public class CartController {
 
     private final CartService cartService;
     private final PaymentGateway paymentGateway;
+    private final CurrentUserProvider currentUserProvider;
 
-    public CartController(CartService cartService, PaymentGateway paymentGateway) {
+    public CartController(CartService cartService, PaymentGateway paymentGateway,
+                          CurrentUserProvider currentUserProvider) {
         this.cartService = cartService;
         this.paymentGateway = paymentGateway;
+        this.currentUserProvider = currentUserProvider;
     }
 
     @GetMapping({"/cart", "/cart/items"})
     public Mono<String> cart(Model model) {
-        return Mono.zip(cartService.getCartView(),
-                        paymentGateway.getBalance()
-                                .map(Optional::of)
-                                .onErrorReturn(Optional.empty()))
-                .doOnNext(tuple -> {
-                    long total = tuple.getT1().total();
-                    Long balance = tuple.getT2().orElse(null);
-                    model.addAttribute("items", tuple.getT1().items());
-                    model.addAttribute("total", total);
-                    model.addAttribute("balance", balance);
-                    model.addAttribute("balanceEnough", balance != null && balance >= total);
-                })
-                .thenReturn("cart");
+        return currentUserProvider.getUserId()
+                .flatMap(userId -> Mono.zip(cartService.getCartView(userId),
+                                paymentGateway.getBalance(userId)
+                                        .map(Optional::of)
+                                        .onErrorReturn(Optional.empty()))
+                        .doOnNext(tuple -> {
+                            long total = tuple.getT1().total();
+                            Long balance = tuple.getT2().orElse(null);
+                            model.addAttribute("items", tuple.getT1().items());
+                            model.addAttribute("total", total);
+                            model.addAttribute("balance", balance);
+                            model.addAttribute("balanceEnough", balance != null && balance >= total);
+                        })
+                        .then(currentUserProvider.get().map(principal -> {
+                            model.addAttribute("authenticated", true);
+                            model.addAttribute("username", principal.getUsername());
+                            return "cart";
+                        })));
     }
 
     @PostMapping("/cart/items")
     public Mono<String> updateCartItem(@RequestParam long id, @RequestParam Action action) {
-        return cartService.update(id, action).thenReturn("redirect:/cart/items");
+        return currentUserProvider.getUserId()
+                .flatMap(userId -> cartService.update(userId, id, action))
+                .thenReturn("redirect:/cart/items");
     }
 
     @PostMapping("/items")
@@ -62,7 +73,8 @@ public class CartController {
                                               @RequestParam(name = "sort", defaultValue = "NO") SortOption sort,
                                               @RequestParam(name = "pageNumber", defaultValue = "1") @Min(1) int pageNumber,
                                               @RequestParam(name = "pageSize", defaultValue = "5") @Min(2) @Max(100) int pageSize) {
-        return cartService.update(id, action)
+        return currentUserProvider.getUserId()
+                .flatMap(userId -> cartService.update(userId, id, action))
                 .thenReturn("redirect:" + UriComponentsBuilder.fromPath("/items")
                         .queryParam("search", search)
                         .queryParam("sort", sort.name())
@@ -73,6 +85,8 @@ public class CartController {
 
     @PostMapping("/items/{id}")
     public Mono<String> updateItemFromPage(@PathVariable long id, @RequestParam Action action) {
-        return cartService.update(id, action).thenReturn("redirect:/items/" + id);
+        return currentUserProvider.getUserId()
+                .flatMap(userId -> cartService.update(userId, id, action))
+                .thenReturn("redirect:/items/" + id);
     }
 }

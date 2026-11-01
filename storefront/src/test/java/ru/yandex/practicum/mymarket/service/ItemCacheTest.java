@@ -3,6 +3,7 @@ package ru.yandex.practicum.mymarket.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWebTestClient;
@@ -25,6 +26,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.csrf;
+import static org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.mockUser;
 
 @SpringBootTest
 @AutoConfigureWebTestClient
@@ -48,7 +51,14 @@ class ItemCacheTest {
     @Autowired
     private CartItemRepository cartItemRepository;
 
+    private WebTestClient buyerClient;
+
     private final List<Long> createdItemIds = new ArrayList<>();
+
+    @BeforeEach
+    void setUpClient() {
+        buyerClient = webTestClient.mutateWith(mockUser("user").roles("USER")).mutateWith(csrf());
+    }
 
     @AfterEach
     void isolate() {
@@ -141,7 +151,7 @@ class ItemCacheTest {
         addToCart(alpha.getId());
         addToCart(beta.getId());
 
-        String coldBody = getBody("/cart/items");
+        String coldBody = getBuyerBody("/cart/items");
         assertThat(coldBody)
                 .contains(alpha.getTitle())
                 .contains(beta.getTitle());
@@ -153,7 +163,7 @@ class ItemCacheTest {
         markCachedItem(alpha.getId());
         redisTemplate.delete(ItemCache.itemKey(beta.getId())).block();
 
-        String mixedBody = getBody("/cart/items");
+        String mixedBody = getBuyerBody("/cart/items");
 
         assertThat(mixedBody).contains(MARKER);
         assertThat(mixedBody).doesNotContain(alpha.getTitle());
@@ -170,7 +180,7 @@ class ItemCacheTest {
     }
 
     private void addToCart(long itemId) {
-        webTestClient.post().uri("/items?id=" + itemId + "&action=PLUS")
+        buyerClient.post().uri("/items?id=" + itemId + "&action=PLUS")
                 .exchange()
                 .expectStatus().is3xxRedirection();
     }
@@ -189,6 +199,13 @@ class ItemCacheTest {
 
     private String getBody(String uri) {
         return webTestClient.get().uri(uri)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(String.class).returnResult().getResponseBody();
+    }
+
+    private String getBuyerBody(String uri) {
+        return buyerClient.get().uri(uri)
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody(String.class).returnResult().getResponseBody();

@@ -7,8 +7,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClientRequestException;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
-import ru.yandex.practicum.mymarket.config.PaymentProperties;
 import ru.yandex.practicum.mymarket.exception.InsufficientFundsException;
+import ru.yandex.practicum.mymarket.exception.PaymentUnauthorizedException;
 import ru.yandex.practicum.mymarket.exception.PaymentUnavailableException;
 import ru.yandex.practicum.mymarket.payment.api.AccountsApi;
 import ru.yandex.practicum.mymarket.payment.api.PaymentsApi;
@@ -24,29 +24,25 @@ public class PaymentServiceClient implements PaymentGateway {
 
     private final AccountsApi accountsApi;
     private final PaymentsApi paymentsApi;
-    private final PaymentProperties properties;
 
-    public PaymentServiceClient(AccountsApi accountsApi,
-                                PaymentsApi paymentsApi,
-                                PaymentProperties properties) {
+    public PaymentServiceClient(AccountsApi accountsApi, PaymentsApi paymentsApi) {
         this.accountsApi = accountsApi;
         this.paymentsApi = paymentsApi;
-        this.properties = properties;
     }
 
     @Override
-    public Mono<Long> getBalance() {
-        return accountsApi.getAccount(properties.accountId())
+    public Mono<Long> getBalance(long accountId) {
+        return accountsApi.getAccount(accountId)
                 .map(AccountResponse::getBalance)
                 .onErrorMap(PaymentServiceClient::isTimeout, this::unavailable)
-                .onErrorMap(WebClientResponseException.class, this::unavailable)
+                .onErrorMap(WebClientResponseException.class, this::mapResponseError)
                 .onErrorMap(WebClientRequestException.class, this::unavailable);
     }
 
     @Override
-    public Mono<Void> charge(long amount) {
+    public Mono<Void> charge(long accountId, long amount) {
         PaymentRequest request = new PaymentRequest()
-                .accountId(properties.accountId())
+                .accountId(accountId)
                 .amount(amount);
         return paymentsApi.createPayment(request)
                 .doOnNext(payment -> log.info("Charged {} from account {}, balance after {}",
@@ -57,9 +53,20 @@ public class PaymentServiceClient implements PaymentGateway {
                     if (ex.getStatusCode().value() == HttpStatus.CONFLICT.value()) {
                         return new InsufficientFundsException(amount, null);
                     }
-                    return unavailable(ex);
+                    return mapResponseError(ex);
                 })
                 .onErrorMap(WebClientRequestException.class, this::unavailable);
+    }
+
+    private Throwable mapResponseError(WebClientResponseException ex) {
+        int status = ex.getStatusCode().value();
+        if (status == HttpStatus.UNAUTHORIZED.value()
+                || status == HttpStatus.FORBIDDEN.value()) {
+            log.error("Payment service rejected the storefront client: {}", status);
+            return new PaymentUnauthorizedException(
+                    "Витрина не авторизована для обращения к сервису платежей", ex);
+        }
+        return unavailable(ex);
     }
 
     private static boolean isTimeout(Throwable error) {

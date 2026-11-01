@@ -5,7 +5,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import java.time.Duration;
 
 @ConfigurationProperties(prefix = "app.payments")
-public record PaymentProperties(String baseUrl, Long accountId, Duration timeout) {
+public record PaymentProperties(String baseUrl, Duration timeout) {
 
     public PaymentProperties {
         if (timeout == null) {

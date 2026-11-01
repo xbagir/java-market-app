@@ -3,10 +3,13 @@ package ru.yandex.practicum.mymarket.config;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
 import ru.yandex.practicum.mymarket.model.Item;
+import ru.yandex.practicum.mymarket.model.User;
 import ru.yandex.practicum.mymarket.repository.ItemRepository;
+import ru.yandex.practicum.mymarket.repository.UserRepository;
 
 import java.util.List;
 
@@ -14,12 +17,23 @@ import java.util.List;
 public class DataInitializer implements ApplicationRunner {
 
     private final ItemRepository itemRepository;
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
 
     @Value("${app.seed.enabled:true}")
     private boolean seedEnabled;
 
-    public DataInitializer(ItemRepository itemRepository) {
+    @Value("${app.seed.user.username:user}")
+    private String seedUsername;
+
+    @Value("${app.seed.user.password:password}")
+    private String seedPassword;
+
+    public DataInitializer(ItemRepository itemRepository, UserRepository userRepository,
+                           PasswordEncoder passwordEncoder) {
         this.itemRepository = itemRepository;
+        this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
     }
 
     @Override
@@ -30,6 +44,11 @@ public class DataInitializer implements ApplicationRunner {
         Boolean empty = itemRepository.count().map(count -> count == 0).block();
         if (Boolean.TRUE.equals(empty)) {
             itemRepository.saveAll(catalog()).collectList().block();
+        }
+        Boolean noUsers = userRepository.count().map(count -> count == 0).block();
+        if (Boolean.TRUE.equals(noUsers)) {
+            userRepository.save(new User(seedUsername, passwordEncoder.encode(seedPassword),
+                    true, "ROLE_USER")).block();
         }
     }
 

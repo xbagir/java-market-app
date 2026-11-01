@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import ru.yandex.practicum.mymarket.cache.ItemCache;
@@ -27,6 +28,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -36,6 +38,8 @@ import reactor.test.StepVerifier;
 
 @ExtendWith(MockitoExtension.class)
 class CartServiceTest {
+
+    private static final long USER_ID = 7L;
 
     @Mock
     private CartItemRepository cartItemRepository;
@@ -67,7 +71,7 @@ class CartServiceTest {
     }
 
     private CartItem cartItem(long id, long itemId, int quantity) {
-        CartItem cartItem = new CartItem(itemId, quantity);
+        CartItem cartItem = new CartItem(USER_ID, itemId, quantity);
         ReflectionTestUtils.setField(cartItem, "id", id);
         return cartItem;
     }
@@ -76,42 +80,61 @@ class CartServiceTest {
     void plusCreatesCartItemWhenAbsent() {
         Item item = item(1L, 1490);
         when(itemRepository.findById(1L)).thenReturn(Mono.just(item));
-        when(cartItemRepository.findByItemId(1L)).thenReturn(Mono.empty());
+        when(cartItemRepository.findByUserIdAndItemId(USER_ID, 1L)).thenReturn(Mono.empty());
+        when(cartItemRepository.incrementQuantity(USER_ID, 1L)).thenReturn(Mono.just(0));
         when(cartItemRepository.save(any(CartItem.class)))
                 .thenReturn(Mono.just(cartItem(1L, 1L, 1)));
 
-        StepVerifier.create(cartService.update(1L, Action.PLUS))
+        StepVerifier.create(cartService.update(USER_ID, 1L, Action.PLUS))
                 .verifyComplete();
 
         verify(cartItemRepository).save(any(CartItem.class));
     }
 
     @Test
-    void plusIncrementsExistingQuantity() {
+    void plusIncrementsExistingQuantityAtomically() {
         Item item = item(1L, 1490);
-        CartItem cartItem = cartItem(1L, 1L, 1);
         when(itemRepository.findById(1L)).thenReturn(Mono.just(item));
-        when(cartItemRepository.findByItemId(1L)).thenReturn(Mono.just(cartItem));
-        when(cartItemRepository.save(cartItem)).thenReturn(Mono.just(cartItem));
+        when(cartItemRepository.findByUserIdAndItemId(USER_ID, 1L))
+                .thenReturn(Mono.just(cartItem(1L, 1L, 1)));
+        when(cartItemRepository.incrementQuantity(USER_ID, 1L)).thenReturn(Mono.just(1));
 
-        StepVerifier.create(cartService.update(1L, Action.PLUS))
+        StepVerifier.create(cartService.update(USER_ID, 1L, Action.PLUS))
                 .verifyComplete();
 
-        assertThat(cartItem.getQuantity()).isEqualTo(2);
+        verify(cartItemRepository).incrementQuantity(USER_ID, 1L);
+        verify(cartItemRepository, never()).save(any());
+    }
+
+    @Test
+    void plusRetriesIncrementWhenConcurrentInsertConflicts() {
+        Item item = item(1L, 1490);
+        when(itemRepository.findById(1L)).thenReturn(Mono.just(item));
+        when(cartItemRepository.findByUserIdAndItemId(USER_ID, 1L)).thenReturn(Mono.empty());
+        when(cartItemRepository.incrementQuantity(USER_ID, 1L))
+                .thenReturn(Mono.just(0))
+                .thenReturn(Mono.just(1));
+        when(cartItemRepository.save(any(CartItem.class)))
+                .thenReturn(Mono.error(new DuplicateKeyException("duplicate")));
+
+        StepVerifier.create(cartService.update(USER_ID, 1L, Action.PLUS))
+                .verifyComplete();
+
+        verify(cartItemRepository, times(2)).incrementQuantity(USER_ID, 1L);
     }
 
     @Test
     void minusDecrementsQuantityAboveOne() {
         Item item = item(1L, 1490);
-        CartItem cartItem = cartItem(1L, 1L, 2);
         when(itemRepository.findById(1L)).thenReturn(Mono.just(item));
-        when(cartItemRepository.findByItemId(1L)).thenReturn(Mono.just(cartItem));
-        when(cartItemRepository.save(cartItem)).thenReturn(Mono.just(cartItem));
+        when(cartItemRepository.findByUserIdAndItemId(USER_ID, 1L))
+                .thenReturn(Mono.just(cartItem(1L, 1L, 2)));
+        when(cartItemRepository.decrementQuantity(USER_ID, 1L)).thenReturn(Mono.just(1));
 
-        StepVerifier.create(cartService.update(1L, Action.MINUS))
+        StepVerifier.create(cartService.update(USER_ID, 1L, Action.MINUS))
                 .verifyComplete();
 
-        assertThat(cartItem.getQuantity()).isEqualTo(1);
+        verify(cartItemRepository).decrementQuantity(USER_ID, 1L);
         verify(cartItemRepository, never()).delete(any());
     }
 
@@ -120,10 +143,10 @@ class CartServiceTest {
         Item item = item(1L, 1490);
         CartItem cartItem = cartItem(1L, 1L, 1);
         when(itemRepository.findById(1L)).thenReturn(Mono.just(item));
-        when(cartItemRepository.findByItemId(1L)).thenReturn(Mono.just(cartItem));
+        when(cartItemRepository.findByUserIdAndItemId(USER_ID, 1L)).thenReturn(Mono.just(cartItem));
         when(cartItemRepository.delete(cartItem)).thenReturn(Mono.empty());
 
-        StepVerifier.create(cartService.update(1L, Action.MINUS))
+        StepVerifier.create(cartService.update(USER_ID, 1L, Action.MINUS))
                 .verifyComplete();
 
         verify(cartItemRepository).delete(cartItem);
@@ -134,10 +157,10 @@ class CartServiceTest {
         Item item = item(1L, 1490);
         CartItem cartItem = cartItem(1L, 1L, 3);
         when(itemRepository.findById(1L)).thenReturn(Mono.just(item));
-        when(cartItemRepository.findByItemId(1L)).thenReturn(Mono.just(cartItem));
+        when(cartItemRepository.findByUserIdAndItemId(USER_ID, 1L)).thenReturn(Mono.just(cartItem));
         when(cartItemRepository.delete(cartItem)).thenReturn(Mono.empty());
 
-        StepVerifier.create(cartService.update(1L, Action.DELETE))
+        StepVerifier.create(cartService.update(USER_ID, 1L, Action.DELETE))
                 .verifyComplete();
 
         verify(cartItemRepository).delete(cartItem);
@@ -146,9 +169,9 @@ class CartServiceTest {
     @Test
     void minusOnMissingCartItemIsNoOp() {
         when(itemRepository.findById(1L)).thenReturn(Mono.just(item(1L, 1490)));
-        when(cartItemRepository.findByItemId(1L)).thenReturn(Mono.empty());
+        when(cartItemRepository.findByUserIdAndItemId(USER_ID, 1L)).thenReturn(Mono.empty());
 
-        StepVerifier.create(cartService.update(1L, Action.MINUS))
+        StepVerifier.create(cartService.update(USER_ID, 1L, Action.MINUS))
                 .verifyComplete();
 
         verify(cartItemRepository, never()).delete(any());
@@ -158,31 +181,32 @@ class CartServiceTest {
     void updateThrowsWhenItemMissing() {
         when(itemRepository.findById(999L)).thenReturn(Mono.empty());
 
-        StepVerifier.create(cartService.update(999L, Action.PLUS))
+        StepVerifier.create(cartService.update(USER_ID, 999L, Action.PLUS))
                 .expectError(NotFoundException.class)
                 .verify();
     }
 
     @Test
     void getQuantityByItemIdDefaultsToZero() {
-        when(cartItemRepository.findByItemId(1L)).thenReturn(Mono.just(cartItem(1L, 1L, 3)));
-        when(cartItemRepository.findByItemId(999L)).thenReturn(Mono.empty());
+        when(cartItemRepository.findByUserIdAndItemId(USER_ID, 1L))
+                .thenReturn(Mono.just(cartItem(1L, 1L, 3)));
+        when(cartItemRepository.findByUserIdAndItemId(USER_ID, 999L)).thenReturn(Mono.empty());
 
-        StepVerifier.create(cartService.getQuantityByItemId(1L))
+        StepVerifier.create(cartService.getQuantityByItemId(USER_ID, 1L))
                 .expectNext(3)
                 .verifyComplete();
-        StepVerifier.create(cartService.getQuantityByItemId(999L))
+        StepVerifier.create(cartService.getQuantityByItemId(USER_ID, 999L))
                 .expectNext(0)
                 .verifyComplete();
     }
 
     @Test
     void quantitiesByItemIdsCollectsMap() {
-        when(cartItemRepository.findAll()).thenReturn(Flux.just(
+        when(cartItemRepository.findAllByUserId(USER_ID)).thenReturn(Flux.just(
                 cartItem(1L, 1L, 2),
                 cartItem(2L, 2L, 1)));
 
-        StepVerifier.create(cartService.quantitiesByItemIds())
+        StepVerifier.create(cartService.quantitiesByItemIds(USER_ID))
                 .assertNext(quantities -> assertThat(quantities)
                         .containsOnlyKeys(1L, 2L)
                         .containsEntry(1L, 2)
@@ -194,14 +218,14 @@ class CartServiceTest {
     void getCartViewReadsCachedItemsAndLoadsMissingFromDb() {
         Item ball = item(1L, 1490);
         Item doll = item(2L, 1890);
-        when(cartItemRepository.findAll()).thenReturn(Flux.just(
+        when(cartItemRepository.findAllByUserId(USER_ID)).thenReturn(Flux.just(
                 cartItem(1L, 1L, 2),
                 cartItem(2L, 2L, 1)));
         cacheEntries.put(ItemCache.itemKey(1L), ItemDto.of(ball, 0));
         when(itemRepository.findAllByIdOrdered(List.of(2L)))
                 .thenReturn(Flux.just(doll));
 
-        StepVerifier.create(cartService.getCartView())
+        StepVerifier.create(cartService.getCartView(USER_ID))
                 .assertNext(view -> {
                     assertThat(view.items()).hasSize(2);
                     assertThat(view.items().get(0).id()).isEqualTo(1L);
@@ -221,13 +245,13 @@ class CartServiceTest {
     void getCartViewLoadsAllItemsFromDbWhenCacheIsEmpty() {
         Item ball = item(1L, 1490);
         Item doll = item(2L, 1890);
-        when(cartItemRepository.findAll()).thenReturn(Flux.just(
+        when(cartItemRepository.findAllByUserId(USER_ID)).thenReturn(Flux.just(
                 cartItem(1L, 1L, 2),
                 cartItem(2L, 2L, 1)));
         when(itemRepository.findAllByIdOrdered(org.mockito.Mockito.<Collection<Long>>any()))
                 .thenReturn(Flux.just(ball, doll));
 
-        StepVerifier.create(cartService.getCartView())
+        StepVerifier.create(cartService.getCartView(USER_ID))
                 .assertNext(view -> {
                     assertThat(view.items()).hasSize(2);
                     assertThat(view.items().get(0).id()).isEqualTo(1L);
@@ -239,5 +263,17 @@ class CartServiceTest {
 
         verify(itemCache).put(ItemCache.itemKey(1L), ItemDto.of(ball, 0));
         verify(itemCache).put(ItemCache.itemKey(2L), ItemDto.of(doll, 0));
+    }
+
+    @Test
+    void getCartViewReturnsEmptyWhenCartIsEmpty() {
+        when(cartItemRepository.findAllByUserId(USER_ID)).thenReturn(Flux.empty());
+
+        StepVerifier.create(cartService.getCartView(USER_ID))
+                .assertNext(view -> {
+                    assertThat(view.items()).isEmpty();
+                    assertThat(view.total()).isZero();
+                })
+                .verifyComplete();
     }
 }

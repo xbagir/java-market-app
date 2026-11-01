@@ -1,0 +1,20 @@
+server:
+  port: ${SERVER_PORT:9000}
+
+spring:
+  application:
+    name: auth-server
+
+app:
+  auth:
+    issuer: ${AUTH_SERVER_ISSUER:http://localhost:9000}
+    storefront:
+      client-id: ${STOREFRONT_CLIENT_ID:storefront}
+      client-secret: ${STOREFRONT_CLIENT_SECRET:storefront-secret}
+    resource-server:
+      client-id: ${RESOURCE_SERVER_CLIENT_ID:payment-client}
+      client-secret: ${RESOURCE_SERVER_CLIENT_SECRET:payment-client-secret}
+
+logging:
+  level:
+    org.springframework.security: INFO

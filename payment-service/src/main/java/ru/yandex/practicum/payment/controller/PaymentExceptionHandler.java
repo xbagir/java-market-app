@@ -6,7 +6,6 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.bind.support.WebExchangeBindException;
 
-import ru.yandex.practicum.payment.exception.AccountNotFoundException;
 import ru.yandex.practicum.payment.exception.InsufficientFundsException;
 import ru.yandex.practicum.payment.exception.InvalidPaymentException;
 
@@ -14,11 +13,6 @@ import jakarta.validation.ConstraintViolationException;
 
 @RestControllerAdvice
 public class PaymentExceptionHandler {
-
-    @ExceptionHandler(AccountNotFoundException.class)
-    public ProblemDetail accountNotFound(AccountNotFoundException ex) {
-        return problem(HttpStatus.NOT_FOUND, "Счёт не найден", ex.getMessage());
-    }
 
     @ExceptionHandler(InsufficientFundsException.class)
     public ProblemDetail insufficientFunds(InsufficientFundsException ex) {

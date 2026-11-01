@@ -3,12 +3,12 @@ package ru.yandex.practicum.mymarket.service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import ru.yandex.practicum.mymarket.dto.OrderDto;
 import ru.yandex.practicum.mymarket.exception.EmptyCartException;
 import ru.yandex.practicum.mymarket.exception.InsufficientFundsException;
 import ru.yandex.practicum.mymarket.exception.NotFoundException;
+import ru.yandex.practicum.mymarket.exception.PurchaseInProgressException;
 import ru.yandex.practicum.mymarket.model.CartItem;
 import ru.yandex.practicum.mymarket.model.Item;
 import ru.yandex.practicum.mymarket.model.Order;
@@ -21,6 +21,8 @@ import reactor.core.publisher.Mono;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class OrderService {
@@ -32,6 +34,7 @@ public class OrderService {
     private final ItemRepository itemRepository;
     private final CartService cartService;
     private final PaymentGateway paymentGateway;
+    private final Set<Long> purchasesInProgress = ConcurrentHashMap.newKeySet();
 
     public OrderService(OrderRepository orderRepository,
                         OrderItemRepository orderItemRepository,
@@ -45,9 +48,19 @@ public class OrderService {
         this.paymentGateway = paymentGateway;
     }
 
-    @Transactional
-    public Mono<OrderDto> createOrderFromCart() {
-        return cartService.getCartItems()
+    public Mono<OrderDto> createOrderFromCart(long userId) {
+        return Mono.defer(() -> {
+            if (!purchasesInProgress.add(userId)) {
+                return Mono.error(new PurchaseInProgressException(
+                        "Оформление заказа для этого пользователя уже выполняется"));
+            }
+            return doCreateOrderFromCart(userId)
+                    .doFinally(signal -> purchasesInProgress.remove(userId));
+        });
+    }
+
+    private Mono<OrderDto> doCreateOrderFromCart(long userId) {
+        return cartService.getCartItems(userId)
                 .collectList()
                 .flatMap(cartItems -> {
                     if (cartItems.isEmpty()) {
@@ -61,29 +74,34 @@ public class OrderService {
                                         .mapToLong(ci -> itemsById.get(ci.getItemId()).getPrice()
                                                 * ci.getQuantity())
                                         .sum();
-                                return payForOrder(totalSum)
-                                        .then(Mono.defer(() -> saveOrder(cartItems, itemsById, totalSum)));
+                                return saveOrder(userId, cartItems, itemsById, totalSum)
+                                        .flatMap(order -> payForOrder(userId, totalSum)
+                                                .thenReturn(order)
+                                                .onErrorResume(error -> rollbackOrder(order)
+                                                        .then(Mono.error(error))))
+                                        .flatMap(order -> cartService.clear(userId)
+                                                .thenReturn(order));
                             });
                 })
-                .doOnSuccess(order -> log.info("Created order {} with total {}",
-                        order.id(), order.totalSum()));
+                .doOnSuccess(order -> log.info("Created order {} of user {} with total {}",
+                        order.id(), userId, order.totalSum()));
     }
 
-    private Mono<Void> payForOrder(long totalSum) {
-        return paymentGateway.getBalance()
+    private Mono<Void> payForOrder(long userId, long totalSum) {
+        return paymentGateway.getBalance(userId)
                 .flatMap(balance -> {
                     if (balance < totalSum) {
                         return Mono.<Void>error(
                                 new InsufficientFundsException(totalSum, balance));
                     }
-                    return paymentGateway.charge(totalSum);
+                    return paymentGateway.charge(userId, totalSum);
                 });
     }
 
-    private Mono<OrderDto> saveOrder(List<CartItem> cartItems,
+    private Mono<OrderDto> saveOrder(long userId, List<CartItem> cartItems,
                                      Map<Long, Item> itemsById,
                                      long totalSum) {
-        Order order = new Order();
+        Order order = new Order(userId);
         order.setTotalSum(totalSum);
         return orderRepository.save(order)
                 .flatMap(saved -> {
@@ -93,19 +111,27 @@ public class OrderService {
                                     itemsById.get(ci.getItemId()).getPrice()))
                             .toList();
                     return orderItemRepository.saveAll(orderItems)
-                            .then(cartService.clear())
-                            .thenReturn(OrderDto.of(saved, orderItems, itemsById));
+                            .then(Mono.fromSupplier(
+                                    () -> OrderDto.of(saved, orderItems, itemsById)));
                 });
     }
 
-    public Mono<OrderDto> getOrder(long id) {
+    private Mono<Void> rollbackOrder(OrderDto order) {
+        return orderItemRepository.deleteByOrderId(order.id())
+                .then(orderRepository.deleteById(order.id()))
+                .doOnSuccess(ignored -> log.warn(
+                        "Rolled back order {} because payment failed", order.id()));
+    }
+
+    public Mono<OrderDto> getOrder(long userId, long id) {
         return orderRepository.findById(id)
+                .filter(order -> order.getUserId() == userId)
                 .switchIfEmpty(Mono.error(new NotFoundException("Заказ с id " + id + " не найден")))
                 .flatMap(this::toOrderDto);
     }
 
-    public Mono<List<OrderDto>> getOrders() {
-        return orderRepository.findAllByOrderByIdDesc().collectList()
+    public Mono<List<OrderDto>> getOrders(long userId) {
+        return orderRepository.findAllByUserIdOrderByIdDesc(userId).collectList()
                 .flatMap(orders -> {
                     if (orders.isEmpty()) {
                         return Mono.just(List.<OrderDto>of());
